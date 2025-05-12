@@ -1,0 +1,12 @@
+from config import *
+from process.prepare import PrepareData
+
+if __name__ == '__main__':
+    args = set_config()
+    pd = PrepareData(args)
+    
+    
+    # pd.run(sub_to_run, split=True, expand=True)
+    # cv = CrossValidation(args)
+    # seed_all(args.random_seed)
+    # cv.n_fold_CV(subject=sub_to_run, fold=args.fold, reproduce=args.reproduce)
