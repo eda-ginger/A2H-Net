@@ -1,5 +1,6 @@
 from config import *
 from process.prepare import *
+from process.train import *
 
 if __name__ == '__main__':
     ## set config
@@ -11,17 +12,9 @@ if __name__ == '__main__':
     else:
         PrepareData(args)
     
-    ## read & split (train & valid)
+    ## split
     args.folder = 'Refined'
     CrossValidationSplit(args)
     
-    ## training
-    
-    
-    ## evaluation
-    
-    
-    # pd.run(sub_to_run, split=True, expand=True)
-    # cv = CrossValidation(args)
-    # seed_all(args.random_seed)
-    # cv.n_fold_CV(subject=sub_to_run, fold=args.fold, reproduce=args.reproduce)
+    ## training & evaluation
+    Train_CV(args)

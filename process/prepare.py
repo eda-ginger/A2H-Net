@@ -192,6 +192,61 @@ class CrossValidationSplit:
         return split['train_codes'], split['val_codes']
 
 
+# Contents from data_utils.py
+class FoldDataset(Dataset):
+    """A PyTorch Dataset to handle data for a specific fold in cross-validation."""
+    def __init__(self, all_data_list, target_pdb_codes):
+        """
+        Args:
+            all_data_list (list): The full list of data items (dictionaries) loaded 
+                                  from a .pkl file (e.g., Refined_data.pkl).
+            target_pdb_codes (list): A list of PDB codes specific to this fold.
+        """
+        self.target_pdb_codes_set = set(target_pdb_codes)
+        # Efficiently filter the data_list by checking PDB codes against the set
+        self.filtered_data_list = [
+            item for item in all_data_list 
+            if item['pdb_code'] in self.target_pdb_codes_set
+        ]
+        if not self.filtered_data_list:
+            print(f"Warning: FoldDataset created with 0 items for target PDB codes: {target_pdb_codes[:5]}...")
+
+    def __len__(self):
+        return len(self.filtered_data_list)
+
+    def __getitem__(self, idx):
+        # Returns a dictionary: {'pdb_code', 'ligand', 'sequence', 'a2h', 'affinity'}
+        return self.filtered_data_list[idx]
+
+def collate_fn(batch):
+    """
+    Custom collate function to batch diverse data types from FoldDataset.
+    Args:
+        batch (list): A list of dictionaries, where each dictionary is an item 
+                      from FoldDataset (e.g., {'ligand': pyg_data, 'sequence': tensor, ...}).
+    Returns:
+        A tuple: (inputs, affinities)
+        inputs is a tuple: (ligand_batch, sequence_batch, a2h_batch)
+    """
+    # Assuming item['ligand'] is a PyG Data object (batch, atom_num, features)
+    ligands = Batch.from_data_list([item['ligand'] for item in batch])
+    
+    # Assuming item['sequence'] is a PyG Data object (batch, protein_length, features)
+    sequences = Batch.from_data_list([item['sequence'] for item in batch])
+    
+    # Assuming item['a2h'] is a PyG Data object (batch, timesteps, max_atom_num, coord)
+    a2hs = Batch.from_data_list([item['a2h'] for item in batch])
+    
+    # Assuming item['affinity'] is a tensor, e.g., shape (1, 1)
+    affinities = torch.tensor([item['affinity'] for item in batch], dtype=torch.float).view(-1, 1)
+    
+    # Pack inputs for the model
+    # The model's forward pass will expect these three components
+    model_inputs = (ligands, sequences, a2hs) 
+    
+    return model_inputs, affinities
+
+
 if __name__ == "__main__":
     args = set_config()
     logger.info("Starting data preparation...")
