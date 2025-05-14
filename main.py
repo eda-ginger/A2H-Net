@@ -2,8 +2,22 @@ from config import *
 from process.prepare import PrepareData
 
 if __name__ == '__main__':
+    ## set config
     args = set_config()
-    pd = PrepareData(args)
+    if args.all_folder:
+        for folder in ['Refined', 'CORE', 'CSAR']:
+            args.folder = folder
+            PrepareData(args)
+    else:
+        PrepareData(args)
+    
+    ## read & split (train & valid)
+    
+    
+    ## training
+    
+    
+    ## evaluation
     
     
     # pd.run(sub_to_run, split=True, expand=True)

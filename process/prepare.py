@@ -27,19 +27,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class PrepareData(Dataset):
-    def __init__(self, args, folder='Refined', force_reload=False):
+    def __init__(self, args):
         self.args = args
-        self.folder = folder
+        self.folder = args.folder
+        self.force_reload = args.force_reload
         self.ligand_path = Path(args.ligand) / self.folder
         self.protein_seq_path = Path(args.protein_seq) / self.folder
         self.protein_a2h_path = Path(args.protein_a2h)
         self.info = pd.read_csv(args.data_info)
         
         # Define cache path
-        self.cache_path = Path(args.cache_dir) / f"{folder}_data.pkl"
+        self.cache_path = Path(args.cache_dir) / f"{self.folder}_data.pkl"
         
         self.data_list = []
-        if not force_reload and self.cache_path.exists():
+        if not self.force_reload and self.cache_path.exists():
             self.load_cache()
         else:
             self.load_data()
@@ -107,23 +108,19 @@ class PrepareData(Dataset):
     
     def __getitem__(self, idx):
         return self.data_list[idx]
-    
-    def collate_fn(self, batch):
-        ligands = [item['ligand'] for item in batch]
-        sequences = torch.stack([item['sequence'] for item in batch])
-        a2h_data = torch.stack([item['a2h'].x for item in batch])  # Access x attribute of Data object
 
-        return Batch.from_data_list(ligands), sequences, a2h_data
-
-
-class CustomDataLoader(DataLoader):
-    def __init__(self, data, **kwargs):
-        super().__init__(data, collate_fn=data.collate_fn, **kwargs)
 
 if __name__ == "__main__":
     args = set_config()
     logger.info("Starting data preparation...")
-    train = PrepareData(args, folder='Refined', force_reload=True)
-    test = PrepareData(args, folder='CORE', force_reload=True)
-    test = PrepareData(args, folder='CSAR', force_reload=True)
+    args.force_reload = True
+
+    args.folder = 'Refined'
+    train = PrepareData(args)
+
+    args.folder = 'CORE'
+    test = PrepareData(args)
+
+    args.folder = 'CSAR'
+    test = PrepareData(args)
     logger.info("Data preparation completed.")

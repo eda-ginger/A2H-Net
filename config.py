@@ -9,7 +9,10 @@ def set_config():
     parser.add_argument('--protein_a2h', type=str, default='./data/a2h/', help='protein apo_to_holopath')
     parser.add_argument('--data_info', type=str, default='./data_info.csv', help='summary')
     parser.add_argument('--cache_dir', type=str, default='./cache/', help='cache directory')
-    
+    parser.add_argument('--folder', type=str, default='Refined', help='folder name')
+    parser.add_argument('--all_folder', action=argparse.BooleanOptionalAction, default=True) # if True, all folder will be processed
+    parser.add_argument('--force_reload', action=argparse.BooleanOptionalAction, default=False)
+
     # project    
     parser.add_argument('--project_name', type=str, default='Try', help='project name')
     
