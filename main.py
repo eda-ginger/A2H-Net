@@ -1,5 +1,5 @@
 from config import *
-from process.prepare import PrepareData
+from process.prepare import *
 
 if __name__ == '__main__':
     ## set config
@@ -12,7 +12,8 @@ if __name__ == '__main__':
         PrepareData(args)
     
     ## read & split (train & valid)
-    
+    args.folder = 'Refined'
+    CrossValidationSplit(args)
     
     ## training
     

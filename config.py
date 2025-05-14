@@ -13,11 +13,16 @@ def set_config():
     parser.add_argument('--all_folder', action=argparse.BooleanOptionalAction, default=True) # if True, all folder will be processed
     parser.add_argument('--force_reload', action=argparse.BooleanOptionalAction, default=False)
 
+    # a2h
+    parser.add_argument('--timesteps', type=int, default=10, help='num of timesteps') # num of interpolation steps between apo and holo structures
+    parser.add_argument('--all_atom', action=argparse.BooleanOptionalAction, default=False) # if True, all atoms will be processed
+
     # project    
     parser.add_argument('--project_name', type=str, default='Try', help='project name')
     
     # training process
     parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--n_splits', type=int, default=10, help='num of cross-validation splits')
     parser.add_argument('--n_epochs', type=int, default=300, help='num of epochs')
     parser.add_argument('--n_workers', type=int, default=10, help='num of workers for dataset')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size')
