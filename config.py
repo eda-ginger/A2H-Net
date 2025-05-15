@@ -7,7 +7,7 @@ def set_config():
     parser.add_argument('--ligand', type=str, default='./data/ligand/', help='Ligand data path')
     parser.add_argument('--protein_seq', type=str, default='./data/sequence/', help='Protein sequence data path')
     parser.add_argument('--protein_a2h', type=str, default='./data/a2h/', help='Protein A2H data path')
-    parser.add_argument('--data_info', type=str, default='./data_info.csv', help='Path to data summary CSV (e.g., PDB codes and affinities)')
+    parser.add_argument('--data_info', type=str, default='./data/data_info.csv', help='Path to data summary CSV (e.g., PDB codes and affinities)')
     parser.add_argument('--cache_dir', type=str, default='./cache/', help='Directory for cached data and splits')
     parser.add_argument('--folder', type=str, default='Refined', choices=['Refined', 'CORE', 'CSAR', 'Test'], help='Dataset folder name for prepare.py or direct loading')
     parser.add_argument('--all_folder', action=argparse.BooleanOptionalAction, default=False, help='If True, process all folders in prepare.py (usually False for training script)')

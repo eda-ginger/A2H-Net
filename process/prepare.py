@@ -234,8 +234,9 @@ def collate_fn(batch):
     # Assuming item['sequence'] is a PyG Data object (batch, protein_length, features)
     sequences = Batch.from_data_list([item['sequence'] for item in batch])
     
-    # Assuming item['a2h'] is a PyG Data object (batch, timesteps, max_atom_num, coord)
-    a2hs = Batch.from_data_list([item['a2h'] for item in batch])
+    # item['a2h'] is a PyG Data object, its .x attribute is (timesteps, max_atom_num, coord)
+    # We stack these .x attributes to get (batch_size, timesteps, max_atom_num, coord)
+    a2hs = torch.stack([item['a2h'].x for item in batch], dim=0)
     
     # Assuming item['affinity'] is a tensor, e.g., shape (1, 1)
     affinities = torch.tensor([item['affinity'] for item in batch], dtype=torch.float).view(-1, 1)

@@ -82,3 +82,12 @@ if __name__ == "__main__":
     result = read_a2h(str(file_path))
     print(f"Data shape: {result.x.shape}")  # Access shape through x attribute
     print(f"First timestep: {result.x[0]}")
+    
+    # RNN input shape: (batch_size, timesteps, max_atom_num * 3)
+    # 샘플마다 atom 종류가 다르므로 옳지 않은 선택 (만약 종류를 하나의 값으로 준다면? 순서의 영향을 완전히 해결하지는 못함)
+    print(result.x[0].view(1, 1, -1))
+    print(result.x[0].view(1, 1, -1).shape)
+
+    # 모델의 작동 방식 (하나씩)
+    # 데이터가 변환되었을 때 그게 어떤 정보가 동일한지? (어떤 정보를 가져갔는지)
+    # 틀리더라도 논리적으로 설명할 수 있어야한다 (과정의 연결성을 이해해야함)

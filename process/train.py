@@ -145,6 +145,9 @@ def Train_CV(args):
                               collate_fn=collate_fn, num_workers=args.n_workers)
         
 
+        for batch in val_loader:
+            print(batch)
+        
         raise Exception("Stop here")
         
 
