@@ -16,8 +16,8 @@ def set_config():
     parser.add_argument('--timesteps', type=int, default=10, help='Timesteps for a2h data processing')
     parser.add_argument('--all_atom', action=argparse.BooleanOptionalAction, default=False, help='Use all atoms for a2h data processing')
 
-    parser.add_argument('--graphdta', action=argparse.BooleanOptionalAction, default=False, help='Use graphdta for a2h data processing')
-    parser.add_argument('--protein_length', type=int, default=1200, help='Protein length for sequence data processing')
+    parser.add_argument('--graphdta', action=argparse.BooleanOptionalAction, default=True, help='Use graphdta for a2h data processing')
+    parser.add_argument('--protein_length', type=int, default=1000, help='Protein length for sequence data processing')
     
     # Training process arguments
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
