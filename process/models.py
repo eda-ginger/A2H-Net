@@ -33,8 +33,8 @@ class A2HNet_GAT(torch.nn.Module):
         super(A2HNet_GAT, self).__init__()
 
         # graph layers for drug
-        self.drug_gat1 = GATConv(num_features_xd, num_features_xd, heads=10, dropout=dropout)
-        self.drug_gat2 = GATConv(num_features_xd * 10, output_dim, dropout=dropout)
+        self.drug_gat1 = GATConv(num_features_xd, num_features_xd, heads=5, dropout=dropout)
+        self.drug_gat2 = GATConv(num_features_xd * 5, output_dim, dropout=dropout)
         self.fc_g1 = nn.Linear(output_dim, output_dim)
 
         # 1D convolution on protein sequence
@@ -45,8 +45,8 @@ class A2HNet_GAT(torch.nn.Module):
         self.fc_xt1 = nn.Linear(32, output_dim)
         
         # A2H graph branch
-        self.a2h_gat1 = GATConv(24, 64, heads=8, dropout=dropout, edge_dim=5)
-        self.a2h_gat2 = GATConv(64 * 8, 128, dropout=dropout, edge_dim=5)
+        self.a2h_gat1 = GATConv(24, 64, heads=5, dropout=dropout, edge_dim=5)
+        self.a2h_gat2 = GATConv(64 * 5, 128, dropout=dropout, edge_dim=5)
         self.a2h_fc1 = nn.Linear(128, output_dim)
         
         # combined layers
