@@ -18,12 +18,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.tools import get_model
 from config import set_config # Keep for potential use, though args come from main.py
-from utils.tools import set_seed, get_device, count_parameters, log_metrics, save_checkpoint, load_checkpoint
+from utils.tools import set_seed, get_device, count_parameters, save_checkpoint, load_checkpoint
 from utils.metrics import calculate_regression_metrics
 from process.prepare import PrepareData, CrossValidationSplit, FoldDataset, collate_fn # Added FoldDataset, collate_fn
-# Import your model (adjust path and name if different)
-from process.a2h_model import A2HNet 
-
 
 # Configure logging
 logging.basicConfig(

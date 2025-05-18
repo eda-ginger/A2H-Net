@@ -5,6 +5,7 @@ from scipy.stats import pearsonr
 import numpy as np
 from lifelines.utils import concordance_index
 from sklearn.linear_model import LinearRegression
+from math import sqrt
 
 def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict:
     """
@@ -49,19 +50,20 @@ def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict
             'sd': np.nan
         }
 
-    # MSE (Mean Squared Error)
-    mse = F.mse_loss(pred_detached, real_detached).item()
-
-    # RMSE (Root Mean Squared Error)
-    rmse = np.sqrt(mse)
-
-    # MAE (Mean Absolute Error)
-    mae = F.l1_loss(pred_detached, real_detached).item()
-
-    # Convert to NumPy for sklearn, scipy and lifelines functions
+    # Convert to NumPy for calculations
     pred_np = pred_detached.cpu().numpy()
     real_np = real_detached.cpu().numpy()
 
+    # MSE (Mean Squared Error)
+    mse = F.mse_loss(pred_detached, real_detached).item()
+
+    # RMSE (Root Mean Squared Error) - using the provided implementation
+    rmse = sqrt(((real_np - pred_np)**2).mean(axis=0))
+
+    # MAE (Mean Absolute Error) - using the provided implementation
+    mae = (np.abs(real_np - pred_np)).mean()
+
+    # R-squared
     r2 = np.nan
     if num_samples >= 2:
         try:
@@ -69,30 +71,29 @@ def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict
         except ValueError:
             pass
 
+    # Pearson Correlation Coefficient - using the provided implementation
     pcc = np.nan
     if num_samples >= 2:
         try:
-            pcc_val, _ = pearsonr(real_np, pred_np)
-            if not np.isnan(pcc_val):
-                pcc = pcc_val
+            pcc = np.corrcoef(real_np, pred_np)[0,1]
+            if np.isnan(pcc):
+                pcc = np.nan
         except ValueError:
             pass
             
-    # need recheck 
+    # Concordance Index
     ci = np.nan
     if num_samples >= 2:
         try:
-            # Ensure no NaN values are passed to concordance_index
             if not (np.isnan(real_np).any() or np.isnan(pred_np).any()):
-                 # concordance_index can fail if all predictions or actuals are ties
                 if len(np.unique(real_np)) > 1 and len(np.unique(pred_np)) > 1:
-                    ci_val = concordance_index(real_np, pred_np) # event_times, predicted_scores, event_observed=None
+                    ci_val = concordance_index(real_np, pred_np)
                     if not np.isnan(ci_val):
                         ci = ci_val
-        except Exception: # Catch any other unexpected errors from concordance_index
+        except Exception:
             pass       
     
-    # Calculate SD (Standard Deviation of residuals)
+    # Standard Deviation of residuals - using the provided implementation
     sd_val = np.nan
     if num_samples >= 2:
         try:

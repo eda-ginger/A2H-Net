@@ -18,19 +18,18 @@ def set_config():
 
     # Training process arguments
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
-    parser.add_argument('--n_epochs', type=int, default=5, help='Number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training and evaluation')
-    parser.add_argument('--learning_rate', '--lr', type=float, default=1e-4, help='Initial learning rate')
+    parser.add_argument('--n_epochs', type=int, default=300, help='Number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and evaluation')
+    parser.add_argument('--learning_rate', '--lr', type=float, default=1e-3, help='Initial learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
-    parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping based on validation loss')
+    parser.add_argument('--patience', type=int, default=100, help='Patience for early stopping based on validation loss')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of workers for DataLoader (0 for main process)')
     parser.add_argument('--device', type=str, default='cuda', choices=['cuda', 'cpu'], help='Device to use for training (cuda or cpu)')
-    parser.add_argument('--checkpoint_to_load', type=str, default=None, help='Path to a checkpoint file to load and resume training or for testing.')
-    parser.add_argument('--test_only', action=argparse.BooleanOptionalAction, default=False, help='If True, skip training and only run evaluation on test sets using a loaded checkpoint.')
-
-    model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN']
-    model_name = model_list[0]
-    # Model specific arguments (placeholder - adjust based on your A2HNetModel)
+    parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use for training')
+ 
+    # model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN']
+    # model_name = model_list[0]
+    # # Model specific arguments (placeholder - adjust based on your A2HNetModel)
     parser.add_argument('--model', type=str, default=model_name, help='Name of the model to use')
     # parser.add_argument('--ligand_input_dim', type=int, default=55, help='Dimension of ligand node features from drug_to_graph') # From GnS num_features_xd
     # parser.add_argument('--sequence_input_dim', type=int, default=1, help='Input channels for sequence data (e.g., 1 if (1,L))') 

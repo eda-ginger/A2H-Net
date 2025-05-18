@@ -64,7 +64,7 @@ def set_seed(seed_value=42):
 def get_device(args):
     """Get the appropriate torch device based on arguments."""
     if args.device == 'cuda' and torch.cuda.is_available():
-        return torch.device('cuda')
+        return torch.device(f'cuda:{args.gpu}')
     return torch.device('cpu')
 
 
