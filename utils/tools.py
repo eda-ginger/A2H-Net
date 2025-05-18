@@ -161,15 +161,14 @@ def init_wandb(args, fold_idx=None):
 from process.models import *
 
 def get_model(args):
-    drug_dim = 55
     if args.model == 'GraphDTA_GCN':
-        model = GCNNet(num_features_xd=drug_dim)
+        model = GCNNet()
     elif args.model == 'GraphDTA_GAT':
-        model = GATNet(num_features_xd=drug_dim)
+        model = GATNet()
     elif args.model == 'GraphDTA_GIN':
-        model = GINConvNet(num_features_xd=drug_dim)
+        model = GINConvNet()
     elif args.model == 'GraphDTA_GAT_GCN':
-        model = GAT_GCN(num_features_xd=drug_dim)
+        model = GAT_GCN()
     return model
 
 

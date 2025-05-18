@@ -42,7 +42,7 @@ CHARPROTLEN = 25
 ########################################################################################################################
 
 
-def integer_label_encoding(sequence, tp):
+def integer_label_encoding(sequence, tp, max_length=1000):
     """
     Integer encoding for string sequence.
     Args:
@@ -53,7 +53,6 @@ def integer_label_encoding(sequence, tp):
         max_length = 100
         charset = CHARISOSMISET
     elif tp == 'protein':
-        max_length = 1200
         charset = CHARPROTSET
 
     encoding = np.zeros(max_length)
@@ -70,9 +69,9 @@ def integer_label_encoding(sequence, tp):
     return Data(x=torch.from_numpy(encoding).to(torch.long).unsqueeze(dim=0))
 
 
-def protein_seq_to_vec(file):
+def protein_seq_to_vec(file, max_length=1000):
     seq = read_fasta(file)
-    return integer_label_encoding(seq, 'protein')
+    return integer_label_encoding(seq, 'protein', max_length)
 
 
 

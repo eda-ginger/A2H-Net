@@ -88,7 +88,7 @@ class PrepareData(Dataset):
         for pdb_code in tqdm(common_pdb_codes, desc=f"Processing {self.folder}"):
             try:
                 ligand_data = drug_to_graph(ligand_files[pdb_code], file=True)
-                seq_data = protein_seq_to_vec(seq_files[pdb_code])
+                seq_data = protein_seq_to_vec(seq_files[pdb_code], max_length=1000)
                 a2h_data = read_a2h(a2h_files[pdb_code], timesteps=self.timesteps, all_atom=self.all_atom)
                 
                 if ligand_data and seq_data and a2h_data:

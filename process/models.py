@@ -156,8 +156,7 @@ class GATNet(torch.nn.Module):
 
         # 1D convolution on protein sequence
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        # self.conv_xt1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
-        self.conv_xt1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
+        self.conv_xt1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc_xt1 = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -169,12 +168,9 @@ class GATNet(torch.nn.Module):
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, data, device):
+    def forward(self, data):
         drug, target, _ = data 
         target = target.x
-        
-        drug = drug.to(device)
-        target = target.to(device)
 
         # graph input feed-forward
         x, edge_index, batch = drug.x, drug.edge_index, drug.batch
@@ -228,8 +224,7 @@ class GAT_GCN(torch.nn.Module):
 
         # 1D convolution on protein sequence
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        # self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
-        self.conv_xt_1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
+        self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -237,17 +232,12 @@ class GAT_GCN(torch.nn.Module):
         self.fc2 = nn.Linear(1024, 512)
         self.out = nn.Linear(512, self.n_output)        # n_output = 1 for regression task
 
-    def forward(self, data, device):
+    def forward(self, data):
         drug, target, _ = data
-        
-        drug = drug.to(device)
-        target = target.to(device)
         
         x, edge_index, batch = drug.x, drug.edge_index, drug.batch
         # target = data.target
         target = target.x
-        
-        
         
         # print('x shape = ', x.shape)
         x = self.conv1(x, edge_index)
@@ -296,8 +286,7 @@ class GCNNet(torch.nn.Module):
 
         # protein sequence branch (1d conv)
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        # self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
-        self.conv_xt_1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
+        self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -305,11 +294,8 @@ class GCNNet(torch.nn.Module):
         self.fc2 = nn.Linear(1024, 512)
         self.out = nn.Linear(512, self.n_output)
 
-    def forward(self, data, device):
+    def forward(self, data):
         drug, target, _ = data 
-        
-        drug = drug.to(device)
-        target = target.to(device)
 
         # get graph input
         x, edge_index, batch = drug.x, drug.edge_index, drug.batch
@@ -388,8 +374,7 @@ class GINConvNet(torch.nn.Module):
 
         # 1D convolution on protein sequence
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        # self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
-        self.conv_xt_1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
+        self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -397,12 +382,8 @@ class GINConvNet(torch.nn.Module):
         self.fc2 = nn.Linear(1024, 256)
         self.out = nn.Linear(256, self.n_output)        # n_output = 1 for regression task
 
-    def forward(self, data, device):
+    def forward(self, data):
         drug, target, _ = data
-
-        drug = drug.to(device)
-        target = target.to(device)
-
         x, edge_index, batch = drug.x, drug.edge_index, drug.batch
         # target = data.target
         target = target.x
