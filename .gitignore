@@ -491,11 +491,12 @@ dmypy.json
 data/a2h/
 data/ligand/
 data/sequence/
-.cache/
+# .cache/
 
 # Cache files
-cache/
+# cache/
 *.pkl
+cache/*.pkl
 
 # Python
 __pycache__/
