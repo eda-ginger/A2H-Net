@@ -349,9 +349,6 @@ run.py
 # weights
 pretrained
 
-# datasets
-data
-
 # experiments
 experiments_results
 benchmark_results
@@ -491,7 +488,9 @@ dmypy.json
 .pyre/
 
 # data
-.data/
+data/a2h/
+data/ligand/
+data/sequence/
 .cache/
 
 # Cache files

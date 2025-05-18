@@ -27,8 +27,8 @@ def set_config():
     parser.add_argument('--device', type=str, default='cuda', choices=['cuda', 'cpu'], help='Device to use for training (cuda or cpu)')
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use for training')
  
-    # model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN']
-    # model_name = model_list[0]
+    model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN']
+    model_name = model_list[0]
     # # Model specific arguments (placeholder - adjust based on your A2HNetModel)
     parser.add_argument('--model', type=str, default=model_name, help='Name of the model to use')
     # parser.add_argument('--ligand_input_dim', type=int, default=55, help='Dimension of ligand node features from drug_to_graph') # From GnS num_features_xd
