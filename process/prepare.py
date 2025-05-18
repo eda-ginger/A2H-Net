@@ -87,9 +87,9 @@ class PrepareData(Dataset):
         
         for pdb_code in tqdm(common_pdb_codes, desc=f"Processing {self.folder}"):
             try:
-                ligand_data = drug_to_graph(ligand_files[pdb_code], file=True)
-                seq_data = protein_seq_to_vec(seq_files[pdb_code], max_length=1000)
-                a2h_data = read_a2h(a2h_files[pdb_code], timesteps=self.timesteps, all_atom=self.all_atom)
+                ligand_data = drug_to_graph(ligand_files[pdb_code], file=True, graphdta=args.graphdta)
+                seq_data = protein_seq_to_vec(seq_files[pdb_code], max_length=args.protein_length)
+                a2h_data = read_a2h(a2h_files[pdb_code], all_atom=self.all_atom)
                 
                 if ligand_data and seq_data and a2h_data:
                     self.data_list.append({
@@ -105,7 +105,7 @@ class PrepareData(Dataset):
         
         logger.info(f"ligand data shape: {self.data_list[0]['ligand'].x.shape} (atom_num, features)")
         logger.info(f"sequence data shape: {self.data_list[0]['sequence'].x.shape} (1, protein length)")
-        logger.info(f"a2h data shape: {self.data_list[0]['a2h'].x.shape} (timesteps, max_atom_num, coord)")
+        logger.info(f"a2h data shape: {self.data_list[0]['a2h'].x.shape} (pocket_atom_num, features)")
         
         diff = len(ligand_files) - len(self.data_list)
         logger.info(f"({self.folder}) failed to load {diff}: {len(ligand_files)} -> {len(self.data_list)}")
@@ -234,9 +234,8 @@ def collate_fn(batch):
     # Assuming item['sequence'] is a PyG Data object (batch, protein_length, features)
     sequences = Batch.from_data_list([item['sequence'] for item in batch])
     
-    # item['a2h'] is a PyG Data object, its .x attribute is (timesteps, max_atom_num, coord)
-    # We stack these .x attributes to get (batch_size, timesteps, max_atom_num, coord)
-    a2hs = torch.stack([item['a2h'].x for item in batch], dim=0)
+    # item['a2h'] is a PyG Data object, use Batch.from_data_list to properly batch the graph data
+    a2hs = Batch.from_data_list([item['a2h'] for item in batch])
     
     # Assuming item['affinity'] is a tensor, e.g., shape (1, 1)
     affinities = torch.tensor([item['affinity'] for item in batch], dtype=torch.float).view(-1, 1)

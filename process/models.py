@@ -27,114 +27,88 @@ from torch_geometric.nn import GCNConv, global_mean_pool as gep
 ########## A2H-Net
 ########################################################################################################################
 
-# class GnS(torch.nn.Module):
-#     def __init__(self, n_output=1, num_features_xd=55, num_features_xt=25, n_filters=32, embed_dim=128,
-#                  output_dim=128, dropout=0.2, joint='concat'):
+class A2HNet_GAT(torch.nn.Module):
+    def __init__(self, num_features_xd=55, n_output=1, num_features_xt=25,
+                 embed_dim=128, output_dim=128, dropout=0.2):
+        super(A2HNet_GAT, self).__init__()
 
-#         super(GnS, self).__init__()
+        # graph layers for drug
+        self.drug_gat1 = GATConv(num_features_xd, num_features_xd, heads=10, dropout=dropout)
+        self.drug_gat2 = GATConv(num_features_xd * 10, output_dim, dropout=dropout)
+        self.fc_g1 = nn.Linear(output_dim, output_dim)
 
-#         dim = 32
-#         jdim = 256
-#         self.joint = joint
-#         if self.joint in ['add', 'multiple']:
-#             jdim = 128
+        # 1D convolution on protein sequence
+        self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
+        self.conv_xt1 = nn.Conv1d(in_channels=embed_dim, out_channels=64, kernel_size=5)
+        self.conv_xt2 = nn.Conv1d(in_channels=64, out_channels=32, kernel_size=3)
+        self.adaptive_pool = nn.AdaptiveMaxPool1d(1)
+        self.fc_xt1 = nn.Linear(32, output_dim)
+        
+        # A2H graph branch
+        self.a2h_gat1 = GATConv(24, 64, heads=8, dropout=dropout, edge_dim=5)
+        self.a2h_gat2 = GATConv(64 * 8, 128, dropout=dropout, edge_dim=5)
+        self.a2h_fc1 = nn.Linear(128, output_dim)
+        
+        # combined layers
+        self.fc1 = nn.Linear(384, 1024)  # 128 + 128 + 128 = 384
+        self.fc2 = nn.Linear(1024, 256)
+        self.out = nn.Linear(256, n_output)
 
-#         # GIN layers (drug)
-#         nn1_xd = Sequential(Linear(num_features_xd, dim), ReLU(), Linear(dim, dim))
-#         self.conv1_xd = GINConv(nn1_xd)
-#         self.bn1_xd = torch.nn.BatchNorm1d(dim)
+        # activation and regularization
+        self.relu = nn.ReLU()
+        self.dropout = nn.Dropout(dropout)
 
-#         nn2_xd = Sequential(Linear(dim, dim), ReLU(), Linear(dim, dim))
-#         self.conv2_xd = GINConv(nn2_xd)
-#         self.bn2_xd = torch.nn.BatchNorm1d(dim)
+    def forward(self, data):
+        drug, target, a2h = data 
+        target = target.x
 
-#         nn3_xd = Sequential(Linear(dim, dim), ReLU(), Linear(dim, dim))
-#         self.conv3_xd = GINConv(nn3_xd)
-#         self.bn3_xd = torch.nn.BatchNorm1d(dim)
+        # drug graph input feed-forward
+        x, edge_index, batch = drug.x, drug.edge_index, drug.batch
+        x = self.dropout(x)
+        x = F.elu(self.drug_gat1(x, edge_index))
+        x = self.dropout(x)
+        x = self.drug_gat2(x, edge_index)
+        x = self.relu(x)
+        x = gmp(x, batch)
+        x = self.fc_g1(x)
+        x = self.relu(x)
 
-#         nn4_xd = Sequential(Linear(dim, dim), ReLU(), Linear(dim, dim))
-#         self.conv4_xd = GINConv(nn4_xd)
-#         self.bn4_xd = torch.nn.BatchNorm1d(dim)
+        # protein sequence input feed-forward
+        embedded_xt = self.embedding_xt(target)  # (batch_size, seq_len, embed_dim)
+        embedded_xt = embedded_xt.permute(0, 2, 1)  # (batch_size, embed_dim, seq_len)
+        conv_xt = self.conv_xt1(embedded_xt)
+        conv_xt = self.relu(conv_xt)
+        conv_xt = self.conv_xt2(conv_xt)
+        conv_xt = self.relu(conv_xt)
+        conv_xt = self.adaptive_pool(conv_xt)  # (batch_size, 32, 1)
+        conv_xt = conv_xt.squeeze(-1)  # (batch_size, 32)
+        xt = self.fc_xt1(conv_xt)  # (batch_size, output_dim)
+        
+        # A2H graph input feed-forward
+        a2h_x, a2h_edge_index, a2h_edge_attr, a2h_batch = a2h.x, a2h.edge_index, a2h.edge_attr, a2h.batch
+        a2h_x = self.dropout(a2h_x)
+        
+        a2h_x = F.elu(self.a2h_gat1(a2h_x, a2h_edge_index, a2h_edge_attr))
+        a2h_x = self.dropout(a2h_x)
+        a2h_x = self.a2h_gat2(a2h_x, a2h_edge_index, a2h_edge_attr)
+        a2h_x = self.relu(a2h_x)
+        a2h_x = gmp(a2h_x, a2h_batch)
+        a2h_x = self.a2h_fc1(a2h_x)
+        a2h_x = self.relu(a2h_x)
 
-#         # 1D convolution on protein sequence
-#         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-#         self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)  # batch, 32, 121
+        # concat all modalities
+        xc = torch.cat((x, xt, a2h_x), 1)  # (batch_size, 384)
+        
+        # add some dense layers
+        xc = self.fc1(xc)
+        xc = self.relu(xc)
+        xc = self.dropout(xc)
+        xc = self.fc2(xc)
+        xc = self.relu(xc)
+        xc = self.dropout(xc)
+        out = self.out(xc)
+        return out
 
-#         if 'att' in self.joint:
-#             nn5_xd = Sequential(Linear(dim, dim), ReLU(), Linear(dim, 121))
-#             self.conv5_xd = GINConv(nn5_xd) # batch, node, 121
-#             self.bn5_xd = torch.nn.BatchNorm1d(121)
-
-#             if self.joint == 'bi_att':
-#                 self.jc = weight_norm(BANLayer(v_dim=121, q_dim=121, h_dim=jdim, h_out=2), name='h_mat', dim=None)
-#             elif self.joint == 'cross_att':
-#                 self.jc = CrossAttention(290, n_filters, embed_dim=121, out_dim=jdim, num_heads=8)
-#             elif self.joint == 'co_att':
-#                 self.jc = CoAttention(290, n_filters, embed_dim=121, out_dim=jdim, num_heads=8)
-#             else:
-#                 raise Exception('wrong att type')
-#         else:
-#             nn5_xd = Sequential(Linear(dim, dim), ReLU(), Linear(dim, dim))
-#             self.conv5_xd = GINConv(nn5_xd)
-#             self.bn5_xd = torch.nn.BatchNorm1d(dim)
-
-#             self.fc1_xd = Linear(dim, output_dim)
-#             self.fc1_xt = nn.Linear(32 * 121, output_dim)
-
-#             if self.joint in ['concat', 'add', 'multiple']:
-#                 self.jc = Simple_Joint(self.joint)
-#             elif self.joint == 'bi':
-#                 self.jc = Bilinear_Joint(output_dim, jdim)
-#             else:
-#                 raise Exception(f'{self.joint} method not supported!!!')
-
-#         # dense
-#         self.classifier = nn.Sequential(
-#             nn.Linear(jdim, 1024),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(1024, 256),
-#             nn.ReLU(),
-#             nn.Dropout(dropout),
-#             nn.Linear(256, n_output),
-#         )
-
-#     def forward(self, data):
-#         drug, target, y = data
-#         xd, xd_ei, xd_batch = drug.x, drug.edge_index, drug.batch
-#         xt = target.x
-
-#         # drug
-#         xd = F.relu(self.conv1_xd(xd, xd_ei))
-#         xd = self.bn1_xd(xd)
-#         xd = F.relu(self.conv2_xd(xd, xd_ei))
-#         xd = self.bn2_xd(xd)
-#         xd = F.relu(self.conv3_xd(xd, xd_ei))
-#         xd = self.bn3_xd(xd)
-#         xd = F.relu(self.conv4_xd(xd, xd_ei))
-#         xd = self.bn4_xd(xd)
-#         xd = F.relu(self.conv5_xd(xd, xd_ei))
-#         xd = self.bn5_xd(xd)
-
-#         embedded_xt = self.embedding_xt(xt)
-#         conv_xt = self.conv_xt_1(embedded_xt)
-
-#         # joint
-#         if 'att' in self.joint:
-#             xd = xd.view(len(y), 290, 121)
-#             xj = self.jc(xd, conv_xt)
-
-#         else:
-#             # flatten
-#             xd = gap(xd, xd_batch)
-#             xd = F.relu(self.fc1_xd(xd))
-#             xd = F.dropout(xd, p=0.2, training=self.training)
-#             xt = self.fc1_xt(conv_xt.view(-1, 32 * 121))
-#             xj = self.jc(xd, xt)
-
-#         # dense
-#         out = self.classifier(xj).squeeze(1)
-#         return out, y
 
 ########################################################################################################################
 ########## GraphDTA

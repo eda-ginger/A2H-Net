@@ -11,13 +11,40 @@ from torch_geometric.data import Data
 logger = logging.getLogger(__name__)
 RDLogger.DisableLog('rdApp.*')
 
-def read_a2h(file_path: str, timesteps: int = 10, all_atom: bool = False, pad: bool = True) -> Data:
+def calculate_distance(coord1, coord2):
+    """Calculate Euclidean distance between two 3D coordinates."""
+    return np.sqrt(np.sum((coord1 - coord2) ** 2))
+
+def get_amino_acid_one_hot(res_name: str) -> np.ndarray:
+    """Convert amino acid name to one-hot encoding."""
+    amino_acids = ['ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLN', 'GLU', 'GLY', 'HIS', 
+                   'ILE', 'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 
+                   'TYR', 'VAL']
+    one_hot = np.zeros(len(amino_acids))
+    if res_name in amino_acids:
+        one_hot[amino_acids.index(res_name)] = 1
+    return one_hot
+
+def normalize_vector(vector, mean=None, std=None):
+    """Normalize a vector using mean and standard deviation."""
+    if mean is None:
+        mean = np.mean(vector, axis=0)
+    if std is None:
+        std = np.std(vector, axis=0)
+    return (vector - mean) / (std + 1e-8)
+
+def normalize_distance(distances, max_dist=None):
+    """Normalize distances to [0, 1] range."""
+    if max_dist is None:
+        max_dist = np.max(distances)
+    return distances / (max_dist + 1e-8)
+
+def read_a2h(file_path: str, all_atom: bool = False, pad: bool = True) -> Data:
     """
     Read and process A2H (Apo to Holo) protein structure data.
     
     Args:
         file_path (str): Path to the pickle file containing A2H data
-        timesteps (int): Number of interpolation steps between apo and holo structures
         all_atom (bool): If True, process all atoms; if False, process only CA atoms
         pad (bool): If True, pad the output tensor to max_len
         
@@ -34,8 +61,10 @@ def read_a2h(file_path: str, timesteps: int = 10, all_atom: bool = False, pad: b
     apo_structures = data['APO']
     holo_structures = data['HOLO']
     
-    # Process each atom pair
-    interpolated_coords = []
+    # Process each atom pair and calculate features
+    node_features = []
+    atom_info = []
+    
     for apo, holo in zip(apo_structures, holo_structures):
         # Extract atom information
         a_atom_name, a_res_name, a_res_seq, a_coord = (
@@ -48,7 +77,7 @@ def read_a2h(file_path: str, timesteps: int = 10, all_atom: bool = False, pad: b
         # Skip non-CA atoms if all_atom is False
         if not all_atom and a_atom_name != 'CA':
             continue
-        
+            
         # Validate atom correspondence
         if (a_atom_name, a_res_name, a_res_seq) != (h_atom_name, h_res_name, h_res_seq):
             logger.warning(
@@ -57,37 +86,89 @@ def read_a2h(file_path: str, timesteps: int = 10, all_atom: bool = False, pad: b
                 f"Holo: {h_atom_name} {h_res_name} {h_res_seq}"
             )
             continue
+        
+        # Calculate features for each node
+        displacement = h_coord - a_coord  # Displacement vector
+        distance = np.linalg.norm(displacement)  # Magnitude of displacement
+        
+        # Get amino acid one-hot encoding
+        aa_one_hot = get_amino_acid_one_hot(a_res_name)
+        
+        # Create node feature vector
+        node_feature = np.concatenate([
+            displacement,  # 3D displacement vector
+            [distance],    # Scalar distance
+            aa_one_hot    # Amino acid one-hot encoding (20 dimensions)
+        ])
+                
+        node_features.append(node_feature)
+        atom_info.append({
+            'apo_coord': a_coord,
+            'holo_coord': h_coord,
+            'res_seq': a_res_seq,
+            'res_name': a_res_name,
+            'atom_name': a_atom_name
+        })
+    
+    # Convert to tensor
+    node_features = torch.tensor(node_features, dtype=torch.float)
+    
+    # Create graph edges based on multiple criteria
+    edge_index = []
+    edge_attr = []
+    
+    for i in range(len(atom_info)):
+        for j in range(i + 1, len(atom_info)):
+            # 1. Sequential connection
+            is_sequential = abs(atom_info[i]['res_seq'] - atom_info[j]['res_seq']) == 1
             
-        # Calculate interpolated coordinates
-        interpolation = [
-            a_coord + (h_coord - a_coord) * (i / (timesteps - 1))
-            for i in range(timesteps)
-        ]
-        interpolated_coords.append(interpolation)
+            # 2. Spatial proximity in APO structure
+            apo_dist = calculate_distance(atom_info[i]['apo_coord'], atom_info[j]['apo_coord'])
+            is_apo_close = apo_dist <= 8.0
+            
+            # 3. Spatial proximity in HOLO structure
+            holo_dist = calculate_distance(atom_info[i]['holo_coord'], atom_info[j]['holo_coord'])
+            is_holo_close = holo_dist <= 8.0
+            
+            # Add edge if any condition is met
+            if is_sequential or is_apo_close or is_holo_close:
+                edge_index.append([i, j])
+                edge_index.append([j, i])
+                
+                # Create edge attributes
+                edge_feature = np.array([
+                    apo_dist,    # Distance in APO structure
+                    holo_dist,   # Distance in HOLO structure
+                    int(is_sequential),  # Is sequential connection
+                    int(is_apo_close),   # Is close in APO
+                    int(is_holo_close)   # Is close in HOLO
+                ])
+                edge_attr.extend([edge_feature, edge_feature])
     
-    # Convert to numpy array first, then to tensor for better performance
-    interpolated_coords = np.array(interpolated_coords)
-    interpolated_coords = np.transpose(interpolated_coords, (1, 0, 2))
-    result = torch.from_numpy(interpolated_coords).float()
+    edge_index = torch.tensor(edge_index, dtype=torch.long).t()
+    edge_attr = torch.tensor(edge_attr, dtype=torch.float)
     
-    # Pad if requested
-    if pad:
-        result = F.pad(result, (0, 0, 0, max_len - result.shape[1]))
+    # Create PyTorch Geometric Data object
+    data = Data(
+        x=node_features,        # Node features
+        edge_index=edge_index,  # Graph connectivity
+        edge_attr=edge_attr,    # Edge features
+        num_nodes=len(node_features)
+    )
     
-    return Data(x=result)
+    return data
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path(__file__).parent.parent / "data" / "a2h" / "1a1e_vec.pkl"
+    file_path = Path(__file__).parent.parent / "data" / "a2h" / '1eb2_vec.pkl'
+    # for file in file_path.glob('*.pkl'):
     result = read_a2h(str(file_path))
-    print(f"Data shape: {result.x.shape}")  # Access shape through x attribute
-    print(f"First timestep: {result.x[0]}")
+    if result.x.sum() > len(result.x):
     
-    # RNN input shape: (batch_size, timesteps, max_atom_num * 3)
-    # 샘플마다 atom 종류가 다르므로 옳지 않은 선택 (만약 종류를 하나의 값으로 준다면? 순서의 영향을 완전히 해결하지는 못함)
-    print(result.x[0].view(1, 1, -1))
-    print(result.x[0].view(1, 1, -1).shape)
-
-    # 모델의 작동 방식 (하나씩)
-    # 데이터가 변환되었을 때 그게 어떤 정보가 동일한지? (어떤 정보를 가져갔는지)
-    # 틀리더라도 논리적으로 설명할 수 있어야한다 (과정의 연결성을 이해해야함)
+        print(result.x)
+        # print(result.edge_index)
+        # print(result.edge_attr)
+        print(f"Number of nodes: {result.num_nodes}")
+        print(f"Number of edges: {result.edge_index.shape[1]}")
+        print(f"Node features shape: {result.x.shape}")
+    print('Done')

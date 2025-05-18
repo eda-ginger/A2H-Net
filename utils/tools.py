@@ -169,6 +169,8 @@ def get_model(args):
         model = GINConvNet()
     elif args.model == 'GraphDTA_GAT_GCN':
         model = GAT_GCN()
+    elif args.model == 'A2HNet_GAT':
+        model = A2HNet_GAT()
     return model
 
 

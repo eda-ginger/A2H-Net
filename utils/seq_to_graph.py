@@ -36,7 +36,7 @@ def one_of_k_encoding_unk(x, allowable_set):
         x = allowable_set[-1]
     return list(map(lambda s: x == s, allowable_set))
 
-def atom_features(atom):
+def atom_features_graphdta(atom):
     result = np.array(one_of_k_encoding_unk(atom.GetSymbol(),['C', 'N', 'O', 'S', 'F', 'Si', 'P', 'Cl', 'Br', 'Mg', 'Na','Ca', 'Fe', 'As', 'Al', 'I', 'B', 'V', 'K', 'Tl', 'Yb','Sb', 'Sn', 'Ag', 'Pd', 'Co', 'Se', 'Ti', 'Zn', 'H','Li', 'Ge', 'Cu', 'Au', 'Ni', 'Cd', 'In', 'Mn', 'Zr','Cr', 'Pt', 'Hg', 'Pb', 'Unknown']) +
                     one_of_k_encoding(atom.GetDegree(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
                     one_of_k_encoding_unk(atom.GetTotalNumHs(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
@@ -44,42 +44,45 @@ def atom_features(atom):
                     [atom.GetIsAromatic()])
     return torch.from_numpy(result).float()
 
-# def atom_features(atom,
-#                 explicit_H=True,
-#                 use_chirality=False):
+def atom_features(atom,
+                explicit_H=True,
+                use_chirality=False):
 
-#     results = one_of_k_encoding_unk(
-#         atom.GetSymbol(),
-#         ['C','N','O', 'S','F','Si','P', 'Cl','Br','Mg','Na','Ca','Fe','As','Al','I','B','V','K','Tl',
-#             'Yb','Sb','Sn','Ag','Pd','Co','Se','Ti','Zn','H', 'Li','Ge','Cu','Au','Ni','Cd','In',
-#             'Mn','Zr','Cr','Pt','Hg','Pb','Unknown'
-#         ]) + [atom.GetDegree()/10, atom.GetImplicitValence(),
-#                 atom.GetFormalCharge(), atom.GetNumRadicalElectrons()] + \
-#                 one_of_k_encoding_unk(atom.GetHybridization(), [
-#                 Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2,
-#                 Chem.rdchem.HybridizationType.SP3, Chem.rdchem.HybridizationType.
-#                                     SP3D, Chem.rdchem.HybridizationType.SP3D2
-#                 ]) + [atom.GetIsAromatic()]
-#     # In case of explicit hydrogen(QM8, QM9), avoid calling `GetTotalNumHs`
-#     if explicit_H:
-#         results = results + [atom.GetTotalNumHs()]
+    results = one_of_k_encoding_unk(
+        atom.GetSymbol(),
+        ['C','N','O', 'S','F','Si','P', 'Cl','Br','Mg','Na','Ca','Fe','As','Al','I','B','V','K','Tl',
+            'Yb','Sb','Sn','Ag','Pd','Co','Se','Ti','Zn','H', 'Li','Ge','Cu','Au','Ni','Cd','In',
+            'Mn','Zr','Cr','Pt','Hg','Pb','Unknown'
+        ]) + [atom.GetDegree()/10, atom.GetImplicitValence(),
+                atom.GetFormalCharge(), atom.GetNumRadicalElectrons()] + \
+                one_of_k_encoding_unk(atom.GetHybridization(), [
+                Chem.rdchem.HybridizationType.SP, Chem.rdchem.HybridizationType.SP2,
+                Chem.rdchem.HybridizationType.SP3, Chem.rdchem.HybridizationType.
+                                    SP3D, Chem.rdchem.HybridizationType.SP3D2
+                ]) + [atom.GetIsAromatic()]
+    # In case of explicit hydrogen(QM8, QM9), avoid calling `GetTotalNumHs`
+    if explicit_H:
+        results = results + [atom.GetTotalNumHs()]
 
-#     if use_chirality:
-#         try:
-#             results = results + one_of_k_encoding_unk(
-#             atom.GetProp('_CIPCode'),
-#             ['R', 'S']) + [atom.HasProp('_ChiralityPossible')]
-#         except:
-#             results = results + [False, False
-#                             ] + [atom.HasProp('_ChiralityPossible')]
+    if use_chirality:
+        try:
+            results = results + one_of_k_encoding_unk(
+            atom.GetProp('_CIPCode'),
+            ['R', 'S']) + [atom.HasProp('_ChiralityPossible')]
+        except:
+            results = results + [False, False
+                            ] + [atom.HasProp('_ChiralityPossible')]
 
-#     results = np.array(results).astype(np.float32)
+    results = np.array(results).astype(np.float32)
 
-#     return torch.from_numpy(results)
+    return torch.from_numpy(results)
 
 
-def get_mol_edge_list_and_feat_mtx(mol_graph, pad=False):
-    n_features = [(atom.GetIdx(), atom_features(atom)) for atom in mol_graph.GetAtoms()]
+def get_mol_edge_list_and_feat_mtx(mol_graph, pad=False, graphdta=True):
+    if graphdta:
+        n_features = [(atom.GetIdx(), atom_features_graphdta(atom)) for atom in mol_graph.GetAtoms()]
+    else:
+        n_features = [(atom.GetIdx(), atom_features(atom)) for atom in mol_graph.GetAtoms()]
     n_features.sort() # to make sure that the feature matrix is aligned according to the idx of the atom
     _, n_features = zip(*n_features)
     n_features = torch.stack(n_features)
@@ -101,13 +104,13 @@ def get_mol_edge_list_and_feat_mtx(mol_graph, pad=False):
     return edge_index, n_features
 
 
-def drug_to_graph(smi, pad=False, file=True):
+def drug_to_graph(smi, pad=False, file=True, graphdta=True):
     if file:
         mol = Chem.MolFromMol2File(smi)
     else:
         mol = Chem.MolFromSmiles(smi)
     if mol:
-        edge_index, n_features = get_mol_edge_list_and_feat_mtx(mol, pad)
+        edge_index, n_features = get_mol_edge_list_and_feat_mtx(mol, pad, graphdta)
         return Data(x=n_features, edge_index=edge_index)
 
 
@@ -133,9 +136,6 @@ def protein_to_graph(protein, pfd, prot_inform, pad=False):
                             edge_index_with_self_loop, _ = add_self_loops(f.edge_index, num_nodes=max_nodes)
                             f.edge_index = edge_index_with_self_loop
                         return Data(x=f.x, edge_index=f.edge_index)
-
-
-
 
 
 if __name__ == '__main__':

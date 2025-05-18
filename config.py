@@ -16,6 +16,9 @@ def set_config():
     parser.add_argument('--timesteps', type=int, default=10, help='Timesteps for a2h data processing')
     parser.add_argument('--all_atom', action=argparse.BooleanOptionalAction, default=False, help='Use all atoms for a2h data processing')
 
+    parser.add_argument('--graphdta', action=argparse.BooleanOptionalAction, default=False, help='Use graphdta for a2h data processing')
+    parser.add_argument('--protein_length', type=int, default=1200, help='Protein length for sequence data processing')
+    
     # Training process arguments
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--n_epochs', type=int, default=300, help='Number of training epochs')
@@ -27,8 +30,8 @@ def set_config():
     parser.add_argument('--device', type=str, default='cuda', choices=['cuda', 'cpu'], help='Device to use for training (cuda or cpu)')
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use for training')
  
-    model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN']
-    model_name = model_list[0]
+    model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN', 'A2HNet_GAT']
+    model_name = model_list[-1]
     # # Model specific arguments (placeholder - adjust based on your A2HNetModel)
     parser.add_argument('--model', type=str, default=model_name, help='Name of the model to use')
     # parser.add_argument('--ligand_input_dim', type=int, default=55, help='Dimension of ligand node features from drug_to_graph') # From GnS num_features_xd
@@ -42,6 +45,7 @@ def set_config():
     
     # Weights & Biases arguments
     parser.add_argument('--project', type=str, default=model_name, help='Directory to save checkpoints and logs')
+    # parser.add_argument('--project', type=str, default='test1', help='Directory to save checkpoints and logs')
     parser.add_argument('--use_wandb', action=argparse.BooleanOptionalAction, default=True, help='Use Weights & Biases for logging')
     args = parser.parse_args()
     return args
