@@ -22,7 +22,7 @@ def set_config():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training and evaluation')
     parser.add_argument('--learning_rate', '--lr', type=float, default=1e-3, help='Initial learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
-    parser.add_argument('--patience', type=int, default=100, help='Patience for early stopping based on validation loss')
+    parser.add_argument('--patience', type=int, default=300, help='Patience for early stopping based on validation loss')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of workers for DataLoader (0 for main process)')
     parser.add_argument('--device', type=str, default='cuda', choices=['cuda', 'cpu'], help='Device to use for training (cuda or cpu)')
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use for training')

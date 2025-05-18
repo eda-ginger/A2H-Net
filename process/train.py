@@ -48,7 +48,7 @@ def train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold
         affinities = affinities.to(device)
 
         optimizer.zero_grad()
-        predictions = model((ligands, sequences, a2hs), device)
+        predictions = model((ligands, sequences, a2hs))
         loss = loss_fn(predictions, affinities)
         loss.backward()
         optimizer.step()
@@ -77,7 +77,7 @@ def evaluate(model, data_loader, loss_fn, device):
             a2hs = a2hs.to(device)
             affinities = affinities.to(device)
 
-            predictions = model((ligands, sequences, a2hs), device)
+            predictions = model((ligands, sequences, a2hs))
             loss = loss_fn(predictions, affinities)
             
             total_loss += loss.item()
