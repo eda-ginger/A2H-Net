@@ -42,7 +42,7 @@ def atom_features(atom):
                     one_of_k_encoding_unk(atom.GetTotalNumHs(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
                     one_of_k_encoding_unk(atom.GetImplicitValence(), [0, 1, 2, 3, 4, 5, 6,7,8,9,10]) +
                     [atom.GetIsAromatic()])
-    return torch.from_numpy(result)
+    return torch.from_numpy(result).float()
 
 # def atom_features(atom,
 #                 explicit_H=True,
@@ -140,6 +140,7 @@ def protein_to_graph(protein, pfd, prot_inform, pad=False):
 
 if __name__ == '__main__':
     dr = 'COc1cc2c(cc1Cl)C(c1ccc(Cl)c(Cl)c1)=NCC2'
-    dg = drug_to_graph(dr)
-    dg_pad = drug_to_graph(dr, pad=True)
+    dg = drug_to_graph(dr, file=False)
+    dg_pad = drug_to_graph(dr, pad=True, file=False)
+    print(dg.x)
     print(dg, dg_pad)

@@ -168,6 +168,7 @@ def Train_CV(args):
 
             current_val_metric = val_metrics['rmse']
             if current_val_metric < best_val_metric:
+                logger.info(f"New best validation RMSE: {current_val_metric:.4f}")
                 best_val_metric = current_val_metric
                 epochs_no_improve = 0
                 
