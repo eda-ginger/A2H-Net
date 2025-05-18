@@ -4,6 +4,7 @@ from sklearn.metrics import r2_score
 from scipy.stats import pearsonr
 import numpy as np
 from lifelines.utils import concordance_index
+from sklearn.linear_model import LinearRegression
 
 def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict:
     """
@@ -20,7 +21,8 @@ def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict
               'mae' (Mean Absolute Error),
               'r2' (R-squared),
               'pcc' (Pearson Correlation Coefficient),
-              'ci' (Concordance Index).
+              'ci' (Concordance Index),
+              'sd' (Standard Deviation of residuals).
     """
     if not isinstance(pred, torch.Tensor) or not isinstance(real, torch.Tensor):
         raise TypeError("Inputs 'pred' and 'real' must be PyTorch Tensors.")
@@ -43,7 +45,8 @@ def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict
             'mae': np.nan,
             'r2': np.nan,
             'pcc': np.nan,
-            'ci': np.nan
+            'ci': np.nan,
+            'sd': np.nan
         }
 
     # MSE (Mean Squared Error)
@@ -88,6 +91,18 @@ def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict
                         ci = ci_val
         except Exception: # Catch any other unexpected errors from concordance_index
             pass       
+    
+    # Calculate SD (Standard Deviation of residuals)
+    sd_val = np.nan
+    if num_samples >= 2:
+        try:
+            f, y = pred_np.reshape(-1,1), real_np.reshape(-1,1)
+            lr = LinearRegression()
+            lr.fit(f, y)
+            y_ = lr.predict(f)
+            sd_val = (((y - y_) ** 2).sum() / (len(y) - 1)) ** 0.5
+        except Exception:
+            pass
             
     return {
         'mse': mse,
@@ -95,8 +110,10 @@ def calculate_regression_metrics(pred: torch.Tensor, real: torch.Tensor) -> dict
         'mae': mae,
         'r2': r2,
         'pcc': pcc,
-        'ci': ci
+        'ci': ci,
+        'sd': sd_val
     }
+
 
 if __name__ == '__main__':
     # Example Usage

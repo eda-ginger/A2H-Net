@@ -8,6 +8,7 @@ import numpy as np
 import torch_geometric as pyg
 from torch_geometric.data import Batch
 from torch.utils.data import Dataset, DataLoader
+from pathlib import Path
 
 import warnings
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -93,54 +94,83 @@ def log_metrics(metrics_dict, epoch, phase, args, fold_idx=None):
         wandb.log(wandb_log_dict)
 
 
-def save_checkpoint(state, is_best, filename="checkpoint.pth.tar", best_filename="model_best.pth.tar", output_dir="."):
-    """Save model checkpoint."""
-    os.makedirs(output_dir, exist_ok=True)
-    filepath = os.path.join(output_dir, filename)
-    torch.save(state, filepath)
+def save_checkpoint(state, is_best, filename="checkpoint.pt", best_filename="model_best.pt", output_dir="."):
+    """Save model checkpoint and log metadata."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Save only model state_dict
+    model_state = {
+        'state_dict': state['state_dict']
+    }
+    
+    # Save model state
+    filepath = output_dir / filename
+    torch.save(model_state, filepath)
+    
+    # Log metadata
+    log_file = output_dir / "checkpoint_metadata.log"
+    with open(log_file, 'a') as f:
+        f.write(f"\n=== Checkpoint saved at {filepath} ===\n")
+        f.write(f"Epoch: {state['epoch']}\n")
+        f.write(f"Best Metric: {state['best_metric']:.4f}\n")
+        f.write(f"Args: {state['args']}\n")
+        f.write("="*50 + "\n")
+    
     if is_best:
-        best_filepath = os.path.join(output_dir, best_filename)
+        best_filepath = output_dir / best_filename
         shutil.copyfile(filepath, best_filepath)
-        print(f"Saved new best model to {best_filepath}")
+        logger.info(f"Saved new best model to {best_filepath}")
 
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, device=torch.device('cpu')):
     """Load model checkpoint."""
-    if not os.path.exists(checkpoint_path):
-        print(f"Checkpoint file not found: {checkpoint_path}")
-        return None, 0, float('inf')
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
     
+    # Load only model state_dict
     checkpoint = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(checkpoint['state_dict'])
     
-    start_epoch = checkpoint.get('epoch', 0)
-    best_metric = checkpoint.get('best_metric', float('inf')) # Assuming lower is better for best_metric (e.g., val_loss)
+    # Try to load metadata from log file
+    log_file = checkpoint_path.parent / "checkpoint_metadata.log"
+    if log_file.exists():
+        with open(log_file, 'r') as f:
+            logger.info(f"Loading metadata from {log_file}")
+            # Read the last checkpoint entry
+            log_content = f.read().split("="*50)[-2]  # Get the last entry before the current one
+            logger.info(f"Checkpoint metadata:\n{log_content}")
     
-    if optimizer and 'optimizer' in checkpoint:
-        try:
-            optimizer.load_state_dict(checkpoint['optimizer'])
-        except Exception as e:
-            print(f"Could not load optimizer state: {e}. Optimizer will be re-initialized.")
-
-    print(f"Loaded checkpoint from {checkpoint_path}. Resuming from epoch {start_epoch+1}. Best metric: {best_metric:.4f}")
-    return model, optimizer, start_epoch, best_metric
+    logger.info(f"Loaded model from {checkpoint_path}")
+    return model
 
 
 def init_wandb(args, fold_idx=None):
     """Initialize Weights & Biases."""
-    if args.use_wandb:
-        run_name = args.wandb_run_name
-        if fold_idx is not None:
-            run_name = f"{args.wandb_run_name}_fold_{fold_idx}" if args.wandb_run_name else f"fold_{fold_idx}"
-        
-        wandb.init(
-            project=args.wandb_project,
-            entity=args.wandb_entity, # Add your wandb entity here if needed
-            name=run_name,
-            config=vars(args),
-            reinit=True # Allow reinitialization for multiple folds
-        )
-        print(f"Weights & Biases initialized for project '{args.wandb_project}', run '{run_name}'")
+    config_dict = vars(args)
+    config_dict['fold_idx'] = fold_idx
+    run = wandb.init(
+        entity=args.wandb_entity,
+        project=args.wandb_project,
+        name=f"Fold_{fold_idx}",
+        config=config_dict,
+    )
+    return run
+
+from process.models import *
+
+def get_model(args):
+    drug_dim = 55
+    if args.model == 'GraphDTA_GCN':
+        model = GCNNet(num_features_xd=drug_dim)
+    elif args.model == 'GraphDTA_GAT':
+        model = GATNet(num_features_xd=drug_dim)
+    elif args.model == 'GraphDTA_GIN':
+        model = GINConvNet(num_features_xd=drug_dim)
+    elif args.model == 'GraphDTA_GAT_GCN':
+        model = GAT_GCN(num_features_xd=drug_dim)
+    return model
 
 
 if __name__ == "__main__":

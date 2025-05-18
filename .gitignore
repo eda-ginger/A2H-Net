@@ -519,6 +519,10 @@ ENV/
 
 # Logs
 *.log
+.logs/
+logs/
+.wandb/
+wandb/
 
 # Local development settings
 .env

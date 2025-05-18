@@ -156,7 +156,8 @@ class GATNet(torch.nn.Module):
 
         # 1D convolution on protein sequence
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        self.conv_xt1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        # self.conv_xt1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        self.conv_xt1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
         self.fc_xt1 = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -169,8 +170,11 @@ class GATNet(torch.nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, data):
+        drug, target, _ = data 
+        target = target.x
+
         # graph input feed-forward
-        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x, edge_index, batch = drug.x, drug.edge_index, drug.batch
 
         x = F.dropout(x, p=0.2, training=self.training)
         x = F.elu(self.gcn1(x, edge_index))
@@ -182,7 +186,8 @@ class GATNet(torch.nn.Module):
         x = self.relu(x)
 
         # protein input feed-forward:
-        target = data.target
+        # target = data.target
+        
         embedded_xt = self.embedding_xt(target)
         conv_xt = self.conv_xt1(embedded_xt)
         conv_xt = self.relu(conv_xt)
@@ -220,7 +225,8 @@ class GAT_GCN(torch.nn.Module):
 
         # 1D convolution on protein sequence
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        # self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        self.conv_xt_1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -229,8 +235,10 @@ class GAT_GCN(torch.nn.Module):
         self.out = nn.Linear(512, self.n_output)        # n_output = 1 for regression task
 
     def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-        target = data.target
+        drug, target, _ = data
+        x, edge_index, batch = drug.x, drug.edge_index, drug.batch
+        # target = data.target
+        target = target.x
         # print('x shape = ', x.shape)
         x = self.conv1(x, edge_index)
         x = self.relu(x)
@@ -278,7 +286,8 @@ class GCNNet(torch.nn.Module):
 
         # protein sequence branch (1d conv)
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        # self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        self.conv_xt_1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -287,10 +296,13 @@ class GCNNet(torch.nn.Module):
         self.out = nn.Linear(512, self.n_output)
 
     def forward(self, data):
+        drug, target, _ = data 
+        
         # get graph input
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-        # get protein input
-        target = data.target
+        x, edge_index, batch = drug.x, drug.edge_index, drug.batch
+        # # get protein input
+        # target = data.target
+        target = target.x
 
         x = self.conv1(x, edge_index)
         x = self.relu(x)
@@ -363,7 +375,8 @@ class GINConvNet(torch.nn.Module):
 
         # 1D convolution on protein sequence
         self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
-        self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        # self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
+        self.conv_xt_1 = nn.Conv1d(in_channels=1200, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
         # combined layers
@@ -372,8 +385,10 @@ class GINConvNet(torch.nn.Module):
         self.out = nn.Linear(256, self.n_output)        # n_output = 1 for regression task
 
     def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
-        target = data.target
+        drug, target, _ = data
+        x, edge_index, batch = drug.x, drug.edge_index, drug.batch
+        # target = data.target
+        target = target.x
 
         x = F.relu(self.conv1(x, edge_index))
         x = self.bn1(x)

@@ -12,40 +12,38 @@ def set_config():
     parser.add_argument('--folder', type=str, default='Refined', choices=['Refined', 'CORE', 'CSAR', 'Test'], help='Dataset folder name for prepare.py or direct loading')
     parser.add_argument('--all_folder', action=argparse.BooleanOptionalAction, default=False, help='If True, process all folders in prepare.py (usually False for training script)')
     parser.add_argument('--force_reload', action=argparse.BooleanOptionalAction, default=False, help='Force reload data in prepare.py, bypassing cache')
-    parser.add_argument('--n_splits', type=int, default=5, help='Number of folds for cross-validation') # Default changed from 10 for faster runs if needed
+    parser.add_argument('--n_splits', type=int, default=10, help='Number of folds for cross-validation') # Default changed from 10 for faster runs if needed
     parser.add_argument('--timesteps', type=int, default=10, help='Timesteps for a2h data processing')
     parser.add_argument('--all_atom', action=argparse.BooleanOptionalAction, default=False, help='Use all atoms for a2h data processing')
 
     # Training process arguments
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
-    parser.add_argument('--n_epochs', type=int, default=100, help='Number of training epochs')
+    parser.add_argument('--n_epochs', type=int, default=5, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training and evaluation')
     parser.add_argument('--learning_rate', '--lr', type=float, default=1e-4, help='Initial learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
-    parser.add_argument('--patience', type=int, default=10, help='Patience for early stopping based on validation loss')
+    parser.add_argument('--patience', type=int, default=20, help='Patience for early stopping based on validation loss')
     parser.add_argument('--n_workers', type=int, default=0, help='Number of workers for DataLoader (0 for main process)')
     parser.add_argument('--device', type=str, default='cuda', choices=['cuda', 'cpu'], help='Device to use for training (cuda or cpu)')
-    parser.add_argument('--output_dir', type=str, default='./output/', help='Directory to save checkpoints and logs')
     parser.add_argument('--checkpoint_to_load', type=str, default=None, help='Path to a checkpoint file to load and resume training or for testing.')
     parser.add_argument('--test_only', action=argparse.BooleanOptionalAction, default=False, help='If True, skip training and only run evaluation on test sets using a loaded checkpoint.')
 
+    model_list = ['GraphDTA_GAT', 'GraphDTA_GCN', 'GraphDTA_GIN', 'GraphDTA_GAT_GCN']
+    model_name = model_list[0]
     # Model specific arguments (placeholder - adjust based on your A2HNetModel)
-    parser.add_argument('--model_name', type=str, default='A2HNet', help='Name of the model to use')
-    parser.add_argument('--ligand_input_dim', type=int, default=55, help='Dimension of ligand node features from drug_to_graph') # From GnS num_features_xd
-    parser.add_argument('--sequence_input_dim', type=int, default=1, help='Input channels for sequence data (e.g., 1 if (1,L))') 
-    parser.add_argument('--sequence_embed_dim', type=int, default=128, help='Embedding dimension for sequence tokens (if applicable)')
-    parser.add_argument('--a2h_input_channels', type=int, default=3, help='Number of coordinate channels for A2H data (e.g., 3 for x,y,z)')
-    parser.add_argument('--hidden_dim', type=int, default=128, help='Hidden dimension for various layers in the model')
-    parser.add_argument('--gnn_layers', type=int, default=3, help='Number of GNN layers for ligand processing')
-    parser.add_argument('--cnn_out_channels', type=int, default=32, help='Output channels for sequence CNN') # From GnS n_filters
-    parser.add_argument('--dropout_rate', type=float, default=0.2, help='Dropout rate for regularization')
+    parser.add_argument('--model', type=str, default=model_name, help='Name of the model to use')
+    # parser.add_argument('--ligand_input_dim', type=int, default=55, help='Dimension of ligand node features from drug_to_graph') # From GnS num_features_xd
+    # parser.add_argument('--sequence_input_dim', type=int, default=1, help='Input channels for sequence data (e.g., 1 if (1,L))') 
+    # parser.add_argument('--sequence_embed_dim', type=int, default=128, help='Embedding dimension for sequence tokens (if applicable)')
+    # parser.add_argument('--a2h_input_channels', type=int, default=3, help='Number of coordinate channels for A2H data (e.g., 3 for x,y,z)')
+    # parser.add_argument('--hidden_dim', type=int, default=128, help='Hidden dimension for various layers in the model')
+    # parser.add_argument('--gnn_layers', type=int, default=3, help='Number of GNN layers for ligand processing')
+    # parser.add_argument('--cnn_out_channels', type=int, default=32, help='Output channels for sequence CNN') # From GnS n_filters
+    # parser.add_argument('--dropout_rate', type=float, default=0.2, help='Dropout rate for regularization')
     
     # Weights & Biases arguments
-    parser.add_argument('--use_wandb', action=argparse.BooleanOptionalAction, default=False, help='Use Weights & Biases for logging')
-    parser.add_argument('--wandb_project', type=str, default='A2H-Net-Project', help='Weights & Biases project name')
-    parser.add_argument('--wandb_entity', type=str, default=None, help='Weights & Biases entity (username or team)')
-    parser.add_argument('--wandb_run_name', type=str, default=None, help='Weights & Biases run name (defaults to auto-generated or fold-specific)')
-
+    parser.add_argument('--project', type=str, default=model_name, help='Directory to save checkpoints and logs')
+    parser.add_argument('--use_wandb', action=argparse.BooleanOptionalAction, default=True, help='Use Weights & Biases for logging')
     args = parser.parse_args()
     return args
 
