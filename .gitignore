@@ -488,9 +488,10 @@ dmypy.json
 .pyre/
 
 # data
-data/a2h/
-data/ligand/
-data/sequence/
+data/raw/
+data/dummy/
+data/preprocessed/
+
 # .cache/
 
 # Cache files

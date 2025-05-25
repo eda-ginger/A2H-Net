@@ -28,7 +28,7 @@ from torch_geometric.nn import GCNConv, global_mean_pool as gep
 ########################################################################################################################
 
 class A2HNet_GAT(torch.nn.Module):
-    def __init__(self, num_features_xd=55, n_output=1, num_features_xt=25,
+    def __init__(self, num_features_xd=78, n_output=1, num_features_xt=25,
                  embed_dim=128, output_dim=128, dropout=0.2):
         super(A2HNet_GAT, self).__init__()
 
