@@ -3,6 +3,7 @@ import pandas as pd
 from pathlib import Path
 import sys
 import os
+import json
 import pickle
 import logging
 import numpy as np
@@ -12,13 +13,14 @@ from sklearn.model_selection import KFold
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from tqdm import tqdm
-from torch_geometric.data import Batch
+from torch_geometric.data import Batch, Data
 from torch.utils.data import Dataset, DataLoader
 
 from config import set_config
 from utils.seq_to_graph import drug_to_graph
-from utils.seq_to_vec import protein_seq_to_vec
+from utils.seq_to_vec import integer_label_encoding
 from utils.a2h_to_vec import read_a2h
+# from utils.a2h_to_vec_new import read_a2h
 
 # Configure logging
 logging.basicConfig(
@@ -29,246 +31,157 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class PrepareData(Dataset):
+class PrepareData:
     def __init__(self, args):
+        # Store arguments and load CSV info
         self.args = args
-        self.folder = args.folder
-        self.force_reload = args.force_reload
-        self.ligand_path = Path(args.ligand) / self.folder
-        self.protein_seq_path = Path(args.protein_seq) / self.folder
-        self.protein_a2h_path = Path(args.protein_a2h)
         self.info = pd.read_csv(args.data_info)
         
-        # a2h
+        # Set up a2h path and other config
+        self.a2h_path = Path(args.protein_a2h)
         self.timesteps = args.timesteps
         self.all_atom = args.all_atom
         
-        # Define cache path
-        self.cache_path = Path(args.cache_dir) / f"{self.folder}_data.pkl"
+        # Set up cache directory
+        self.fold_num = args.n_splits
+        # self.cache_path = Path(args.cache_dir)
+        self.cache_path = Path(args.cache_dir) / args.ligand
+        self.cache_path.mkdir(parents=True, exist_ok=True)
         
-        self.data_list = []
-        if not self.force_reload and self.cache_path.exists():
-            self.load_cache()
+        # Check if cache exists or needs to be created
+        self.force_reload = args.force_reload
+        if not self.force_reload:
+            self._check_cache()
         else:
-            self.load_data()
-            self.save_cache()
-        
-    def load_cache(self):
-        """Load data from cache file."""
-        try:
-            with open(self.cache_path, 'rb') as f:
-                self.data_list = pickle.load(f)
-            logger.info(f"Loaded {len(self.data_list)} items from cache for {self.folder}")
-        except Exception as e:
-            logger.warning(f"Failed to load cache: {e}")
-            self.load_data()
-            self.save_cache()
-    
-    def save_cache(self):
-        """Save data to cache file."""
-        try:
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.cache_path, 'wb') as f:
-                pickle.dump(self.data_list, f)
-            logger.info(f"Saved {len(self.data_list)} items to cache for {self.folder}")
-        except Exception as e:
-            logger.error(f"Failed to save cache: {e}")
-        
-    def load_data(self):
-        """Load and process data from source files."""
-        logger.info(f"Loading data for {self.folder}...")
-        ligand_files = {f.stem.split('_')[0]: f for f in self.ligand_path.glob('*')}
-        seq_files = {f.stem.split('_')[0]: f for f in self.protein_seq_path.glob('*')}
-        a2h_files = {f.stem.split('_')[0]: f for f in self.protein_a2h_path.glob('*')}
-        logger.info(f"Found {len(ligand_files)} ligand files, {len(seq_files)} sequence files, {len(a2h_files)} a2h files")
-        
-        common_pdb_codes = set(ligand_files) & set(seq_files) & set(a2h_files)
-        logger.info(f"Found {len(common_pdb_codes)} common PDB codes")
-        
-        for pdb_code in tqdm(common_pdb_codes, desc=f"Processing {self.folder}"):
-            try:
-                ligand_data = drug_to_graph(ligand_files[pdb_code], file=True, graphdta=args.graphdta)
-                seq_data = protein_seq_to_vec(seq_files[pdb_code], max_length=args.protein_length)
-                a2h_data = read_a2h(a2h_files[pdb_code], all_atom=self.all_atom)
-                
-                if ligand_data and seq_data and a2h_data:
-                    self.data_list.append({
-                        'pdb_code': pdb_code,
-                        'ligand': ligand_data,
-                        'sequence': seq_data,
-                        'a2h': a2h_data,
-                        'affinity': self.info.loc[self.info['PDB'] == pdb_code, 'LOGK'].values[0]
-                    })
-            except Exception as e:
-                logger.warning(f"Failed to process {pdb_code}: {e}")
-                continue
-        
-        logger.info(f"ligand data shape: {self.data_list[0]['ligand'].x.shape} (atom_num, features)")
-        logger.info(f"sequence data shape: {self.data_list[0]['sequence'].x.shape} (1, protein length)")
-        logger.info(f"a2h data shape: {self.data_list[0]['a2h'].x.shape} (pocket_atom_num, features)")
-        
-        diff = len(ligand_files) - len(self.data_list)
-        logger.info(f"({self.folder}) failed to load {diff}: {len(ligand_files)} -> {len(self.data_list)}")
+            self._make_cache()
 
+    def _check_cache(self):
+        # Check if all required cache files exist
+        for i in range(1, self.fold_num + 1):
+            for split in ['trn', 'val']:
+                path = self.cache_path / f"fold_{i}_{split}.pkl"
+                if not path.exists():
+                    raise FileNotFoundError(f"{path} not found. Please run with force_reload=True.")
+                
+        for name in ["tst_core.pkl", "tst_csar.pkl"]:
+            path = self.cache_path / name
+            if not path.exists():
+                raise FileNotFoundError(f"{path} not found. Please run with force_reload=True.")
+
+    def _make_cache(self):
+        # Create cache files for each fold and test set
+        folds = sorted(self.cache_path.glob('*fold_*.json'))
+        
+        if len(folds) == 0:
+            raise ValueError(f"No folds found in {self.cache_path}")
+        
+        for fold in folds:
+            fold_idx = fold.stem.split('_')[1]
+            fold_info = json.load(open(fold))
+            
+            # Prepare train and val data for this fold
+            fold_trn = self.info[self.info['PDB'].isin(fold_info['TRN'])]
+            fold_val = self.info[self.info['PDB'].isin(fold_info['VAL'])]
+            trn = [self._process_data(row) for _, row in tqdm(fold_trn.iterrows(), total=fold_trn.shape[0], desc=f"Fold {fold_idx} TRN")]
+            val = [self._process_data(row) for _, row in tqdm(fold_val.iterrows(), total=fold_val.shape[0], desc=f"Fold {fold_idx} VAL")]
+            logger.info(f"Fold-{fold_idx} TRN: {len(trn)}, VAL: {len(val)}")
+            
+            # Save train and val data to cache
+            with open(self.cache_path / f"fold_{fold_idx}_trn.pkl", 'wb') as f:
+                pickle.dump(trn, f)
+            with open(self.cache_path / f"fold_{fold_idx}_val.pkl", 'wb') as f:
+                pickle.dump(val, f)
+                
+        # Prepare and save test sets (CORE, CSAR)
+        for set_name in ['CORE', 'CSAR']:
+            df = self.info[self.info['SET'] == set_name]
+            data = [self._process_data(row) for _, row in tqdm(df.iterrows(), total=df.shape[0], desc=set_name)]
+            with open(self.cache_path / f"tst_{set_name.lower()}.pkl", 'wb') as f:
+                pickle.dump(data, f)
+            logger.info(f"TST({set_name}): {len(data)}")
+
+    def _process_data(self, sample):
+        pdb = sample['PDB']
+        
+        # Ligand encoding (graph or sequence)
+        smi = sample['Ligand']
+        smi = max(smi.split('.'), key=len) # remove metal atoms
+        if self.args.ligand == 'graph':
+            ligand = drug_to_graph(smi, file=False, graphdta=self.args.graphdta)
+        else:
+            ligand = integer_label_encoding(smi, tp='drug', max_length=100)
+        
+        # Protein encoding
+        protein = integer_label_encoding(sample['Global'], tp='protein', max_length=1000)
+        
+        # Load a2h features
+        a2h = read_a2h(self.a2h_path / f"{pdb}_a2h.pkl")
+        
+        # Affinity value
+        affinity = sample['LOGK']
+        
+        # Check for missing data
+        if ligand is None or protein is None or a2h is None or affinity is None:
+            raise ValueError(f"None values found in data for {pdb}")
+        
+        return {
+            'pdb_code': pdb,
+            'ligand': ligand,
+            'protein': protein,
+            'a2h': a2h,
+            'affinity': affinity
+        }
+
+
+class CustomDataset(Dataset):
+    def __init__(self, data_list):
+        self.data_list = data_list
+        
     def __len__(self):
         return len(self.data_list)
     
     def __getitem__(self, idx):
         return self.data_list[idx]
-
-
-class CrossValidationSplit:
-    def __init__(self, args):
-        self.args = args
-        self.folder = args.folder
-        self.n_splits = args.n_splits
-        self.cache_path = Path(args.cache_dir) / f"{self.folder}_cv_splits.pkl"
-        self.data_cache_path = Path(args.cache_dir) / f"{self.folder}_data.pkl"
-        self.splits = []
+    
+    @staticmethod
+    def collate_fn(batch):
+        ligands = Batch.from_data_list([item['ligand'] for item in batch])
+        proteins = Batch.from_data_list([item['protein'] for item in batch])
+        a2hs = Batch.from_data_list([item['a2h'] for item in batch])
         
-        if not args.force_reload and self.cache_path.exists():
-            self.load_splits()
-        else:
-            self.generate_splits()
-            self.save_splits()
-    
-    def load_splits(self):
-        """Load cross-validation splits from cache."""
-        try:
-            with open(self.cache_path, 'rb') as f:
-                self.splits = pickle.load(f)
-            logger.info(f"Loaded {len(self.splits)} cross-validation splits from cache")
-        except Exception as e:
-            logger.warning(f"Failed to load CV splits cache: {e}")
-            self.generate_splits()
-            self.save_splits()
-    
-    def save_splits(self):
-        """Save cross-validation splits to cache."""
-        try:
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.cache_path, 'wb') as f:
-                pickle.dump(self.splits, f)
-            logger.info(f"Saved {len(self.splits)} cross-validation splits to cache")
-        except Exception as e:
-            logger.error(f"Failed to save CV splits cache: {e}")
-    
-    def generate_splits(self):
-        """Generate cross-validation splits from existing data cache."""
-        try:
-            # Load data directly from the existing cache file
-            with open(self.data_cache_path, 'rb') as f:
-                data_list = pickle.load(f)
-            logger.info(f"Loaded {len(data_list)} items from existing data cache")
-            
-            # Get all PDB codes
-            pdb_codes = [item['pdb_code'] for item in data_list]
-            
-            # Generate splits using KFold
-            kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.args.seed)
-            
-            for fold_idx, (train_idx, val_idx) in enumerate(kf.split(pdb_codes)):
-                train_codes = [pdb_codes[i] for i in train_idx]
-                val_codes = [pdb_codes[i] for i in val_idx]
-                
-                self.splits.append({
-                    'fold': fold_idx,
-                    'train_codes': train_codes,
-                    'val_codes': val_codes
-                })
-            
-            logger.info(f"Generated {len(self.splits)} cross-validation splits")
-            
-        except Exception as e:
-            logger.error(f"Failed to generate splits from cache: {e}")
-            raise
-    
-    def get_split(self, fold_idx):
-        """Get train and validation PDB codes for a specific fold."""
-        if fold_idx >= len(self.splits):
-            raise ValueError(f"Fold index {fold_idx} is out of range. Total folds: {len(self.splits)}")
+        # # example a2hs
+        # a2hs = Batch.from_data_list([Data(x=torch.randn(1, 10)) for item in batch])
         
-        split = self.splits[fold_idx]
-        return split['train_codes'], split['val_codes']
-
-
-# Contents from data_utils.py
-class FoldDataset(Dataset):
-    """A PyTorch Dataset to handle data for a specific fold in cross-validation."""
-    def __init__(self, all_data_list, target_pdb_codes):
-        """
-        Args:
-            all_data_list (list): The full list of data items (dictionaries) loaded 
-                                  from a .pkl file (e.g., Refined_data.pkl).
-            target_pdb_codes (list): A list of PDB codes specific to this fold.
-        """
-        self.target_pdb_codes_set = set(target_pdb_codes)
-        # Efficiently filter the data_list by checking PDB codes against the set
-        self.filtered_data_list = [
-            item for item in all_data_list 
-            if item['pdb_code'] in self.target_pdb_codes_set
-        ]
-        if not self.filtered_data_list:
-            print(f"Warning: FoldDataset created with 0 items for target PDB codes: {target_pdb_codes[:5]}...")
-
-    def __len__(self):
-        return len(self.filtered_data_list)
-
-    def __getitem__(self, idx):
-        # Returns a dictionary: {'pdb_code', 'ligand', 'sequence', 'a2h', 'affinity'}
-        return self.filtered_data_list[idx]
-
-def collate_fn(batch):
-    """
-    Custom collate function to batch diverse data types from FoldDataset.
-    Args:
-        batch (list): A list of dictionaries, where each dictionary is an item 
-                      from FoldDataset (e.g., {'ligand': pyg_data, 'sequence': tensor, ...}).
-    Returns:
-        A tuple: (inputs, affinities)
-        inputs is a tuple: (ligand_batch, sequence_batch, a2h_batch)
-    """
-    # Assuming item['ligand'] is a PyG Data object (batch, atom_num, features)
-    ligands = Batch.from_data_list([item['ligand'] for item in batch])
-    
-    # Assuming item['sequence'] is a PyG Data object (batch, protein_length, features)
-    sequences = Batch.from_data_list([item['sequence'] for item in batch])
-    
-    # item['a2h'] is a PyG Data object, use Batch.from_data_list to properly batch the graph data
-    a2hs = Batch.from_data_list([item['a2h'] for item in batch])
-    
-    # Assuming item['affinity'] is a tensor, e.g., shape (1, 1)
-    affinities = torch.tensor([item['affinity'] for item in batch], dtype=torch.float).view(-1, 1)
-    
-    # Pack inputs for the model
-    # The model's forward pass will expect these three components
-    model_inputs = (ligands, sequences, a2hs) 
-    
-    return model_inputs, affinities
+        affinities = torch.tensor([item['affinity'] for item in batch], dtype=torch.float).view(-1, 1)
+        return (ligands, proteins, a2hs), affinities
 
 
 if __name__ == "__main__":
     args = set_config()
     logger.info("Starting data preparation...")
-    
+
     for reload in [True, False]:
         args.force_reload = reload
-
-        args.folder = 'Refined'
-        train = PrepareData(args)
-
-        args.folder = 'CORE'
-        test = PrepareData(args)
-
-        args.folder = 'CSAR'
-        test = PrepareData(args)
-        logger.info("Data preparation completed.")
         
-        args.folder = 'Refined'
-        cv = CrossValidationSplit(args)
-        logger.info("Cross-validation splits completed.")
+        # Prepare data
+        PrepareData(args)
+        logger.info("PrepareData completed.")
+        
+        # Load data from cache (example)
+        with open('cache/fold_1_val.pkl', 'rb') as f:
+            data = pickle.load(f)
+        
+        # Create a small dataset for testing
+        example = CustomDataset(data)
+        loader = DataLoader(example, batch_size=5, shuffle=False, collate_fn=CustomDataset.collate_fn)
+        for batch_idx, (inputs, affinities) in enumerate(loader):
+            logger.info("Batch shapes:")
+            logger.info(f"  Ligand batch shape: {inputs[0].x.shape}")
+            logger.info(f"  Protein batch shape: {inputs[1].x.shape}")
+            logger.info(f"  A2H batch shape: {inputs[2].x.shape}")
+            logger.info(f"  Affinity batch shape: {affinities.shape}")
+            break
+        logger.info("CustomDataset completed.")
         
         logger.info(f"Reload: {reload} operation completed")
         logger.info("--------------------------------")
-        
-        

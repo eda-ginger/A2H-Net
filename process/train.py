@@ -20,7 +20,7 @@ from utils.tools import get_model
 from config import set_config # Keep for potential use, though args come from main.py
 from utils.tools import set_seed, get_device, count_parameters, save_checkpoint, load_checkpoint
 from utils.metrics import calculate_regression_metrics
-from process.prepare import PrepareData, CrossValidationSplit, FoldDataset, collate_fn # Added FoldDataset, collate_fn
+from process.prepare import PrepareData, CustomDataset
 
 # Configure logging
 logging.basicConfig(
@@ -95,56 +95,54 @@ def Train_CV(args):
     # args are passed from main.py
     set_seed(args.seed)
     device = get_device(args)
-    
-    # load full dataset (Refined)
-    full_data = PrepareData(args).data_list
-    if not full_data:
-        logger.error("CRITICAL: Refined data list is empty. Please ensure Refined_data.pkl exists and is valid. Exiting.")
-        return
-    logger.info(f"Loaded {len(full_data)} items from Refined dataset for FoldDataset.")
-    
-    # load cv_splits
-    cv_splitter = CrossValidationSplit(args)
 
     # Test datasets (CORE, CSAR)
     overall_test_metrics = {'CORE': [], 'CSAR': []}
+    
+    # path
+    cache_path = Path(args.cache_dir) / args.ligand
 
-    for fold_idx in range(args.n_splits):
-        logger.info(f"\n--- Starting Fold {fold_idx + 1}/{args.n_splits} ---")
+    for fold_idx in range(1, args.n_splits + 1):
+        logger.info(f"\n--- Starting Fold {fold_idx}/{args.n_splits} ---")
 
         # Initialize wandb for each fold
         if args.use_wandb:
             wandb.init(
                 project=args.project,
                 # entity=args.wandb_entity,
-                name=f"Fold_{fold_idx+1}",
+                name=f"Fold_{fold_idx}",
                 config=vars(args)
             )
-
-        train_pdb_codes, val_pdb_codes = cv_splitter.get_split(fold_idx)
-        logger.info(f"Fold {fold_idx + 1}: {len(train_pdb_codes)} train, {len(val_pdb_codes)} val samples.")
-
-        train_dataset = FoldDataset(full_data, train_pdb_codes)
-        val_dataset = FoldDataset(full_data, val_pdb_codes)
+            
+        
+        trn_pkl = cache_path / f'fold_{fold_idx}_trn.pkl'
+        with open(trn_pkl, 'rb') as f:
+            trn_samples = pickle.load(f)
+        train_dataset = CustomDataset(trn_samples)
+        val_pkl = cache_path / f'fold_{fold_idx}_val.pkl'
+        with open(val_pkl, 'rb') as f:
+            val_samples = pickle.load(f)
+        val_dataset = CustomDataset(val_samples)
+        logger.info(f"Fold {fold_idx}: {len(train_dataset)} train, {len(val_dataset)} val samples.")
         
         # check if datasets are empty
         if len(train_dataset) == 0:
-            logger.warning(f"Train dataset for fold {fold_idx+1} is empty. Skipping fold.")
+            logger.warning(f"Train dataset for fold {fold_idx} is empty. Skipping fold.")
             if args.use_wandb:
                 wandb.finish()
             continue
 
         if len(val_dataset) == 0:
-            logger.warning(f"Validation dataset for fold {fold_idx+1} is empty. Skipping fold.")
+            logger.warning(f"Validation dataset for fold {fold_idx} is empty. Skipping fold.")
             if args.use_wandb:
                 wandb.finish()
             continue
             
         # create dataloaders
         train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, 
-                                collate_fn=collate_fn, num_workers=args.n_workers)
+                                collate_fn=CustomDataset.collate_fn, num_workers=args.n_workers)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, 
-                              collate_fn=collate_fn, num_workers=args.n_workers)
+                              collate_fn=CustomDataset.collate_fn, num_workers=args.n_workers)
         
         # create model
         model = get_model(args).to(device)
@@ -157,13 +155,13 @@ def Train_CV(args):
         epochs_no_improve = 0
         start_epoch = 0
         
-        fold_output_dir = Path('logs') / Path(args.project) / f"fold_{fold_idx+1}"
+        fold_output_dir = Path('logs') / Path(args.project) / f"fold_{fold_idx}"
         fold_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Training loop
-        logger.info(f"Starting training for fold {fold_idx+1} from epoch {start_epoch+1}")
+        logger.info(f"Starting training for fold {fold_idx} from epoch {start_epoch+1}")
         for epoch in range(start_epoch + 1, args.n_epochs + 1):
-            train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold_idx + 1)
+            train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold_idx)
             val_loss, val_metrics = evaluate(model, val_loader, loss_fn, device)
 
             current_val_metric = val_metrics['rmse']
@@ -190,14 +188,14 @@ def Train_CV(args):
                     "val": val_loss})
 
             if epochs_no_improve >= args.patience:
-                logger.info(f"Early stopping triggered at epoch {epoch} for fold {fold_idx+1}")
+                logger.info(f"Early stopping triggered at epoch {epoch} for fold {fold_idx}")
                 break
         
         # fold finished
-        logger.info(f"Finished training for fold {fold_idx + 1}. Best Val Metric (RMSE): {best_val_metric:.4f}")
+        logger.info(f"Finished training for fold {fold_idx}. Best Val Metric (RMSE): {best_val_metric:.4f}")
 
         # evaluate best model on test sets
-        logger.info(f"Evaluating best model from fold {fold_idx + 1} on test sets...")
+        logger.info(f"Evaluating best model from fold {fold_idx} on test sets...")
         best_model_path = fold_output_dir / "model_best.pt"
         
         model_test = get_model(args).to(device)
@@ -205,22 +203,17 @@ def Train_CV(args):
 
         # testing
         for test_set_name in ['CORE', 'CSAR']:
-            logger.info(f"Loading {test_set_name} test set for fold {fold_idx+1}...")
-            test_load_args = argparse.Namespace(**vars(args))
-            test_load_args.folder = test_set_name
-            test_load_args.force_reload = False
+            test_pkl = cache_path / f'tst_{test_set_name.lower()}.pkl'
+            with open(test_pkl, 'rb') as f:
+                test_samples = pickle.load(f)
+            test_dataset = CustomDataset(test_samples)
+            logger.info(f"Test set {test_set_name}: {len(test_dataset)} samples.")
 
-            test_data_provider = PrepareData(test_load_args)
-            
-            # Use all data from the test set provider
-            test_pdb_codes = [item['pdb_code'] for item in test_data_provider.data_list]
-            test_dataset = FoldDataset(test_data_provider.data_list, test_pdb_codes)
-            
             if len(test_dataset) == 0:
                 raise Exception("Warning: {test_set_name} test set is empty after FoldDataset. Skipping.")
             
             test_loader = DataLoader(test_dataset, batch_size=256, shuffle=False, 
-                                    collate_fn=collate_fn, num_workers=args.n_workers)
+                                    collate_fn=CustomDataset.collate_fn, num_workers=args.n_workers)
             
             _, test_metrics = evaluate(model_test, test_loader, loss_fn, device)
             overall_test_metrics[test_set_name].append(test_metrics)

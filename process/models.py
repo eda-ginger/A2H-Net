@@ -19,9 +19,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import Sequential, Linear, ReLU
 from torch.nn.utils.weight_norm import weight_norm
-from torch_geometric.nn import GINConv, global_add_pool as gap
-from torch_geometric.nn import GCNConv, global_mean_pool as gep
 
+from torch_geometric.nn import GCNConv, GATConv, GINConv
+from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 
 ########################################################################################################################
 ########## A2H-Net
@@ -110,12 +110,154 @@ class A2HNet_GAT(torch.nn.Module):
         return out
 
 
+class A2HNet_SEQ(torch.nn.Module):
+    def __init__(self, n_filters=32, num_features_xd=78, n_output=1, num_features_xt=25,
+                 embed_dim=128, output_dim=128, dropout=0.2):
+        super(A2HNet_SEQ, self).__init__()
+
+        # 1D convolution on smiles sequence
+        self.embedding_xd = nn.Embedding(64 + 1, 128) # batch, 100, 128 -> batch, 128, 100
+        self.conv_xd_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=4) # batch, 32, 97
+        self.conv_xd_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=4) # batch, 64, 94
+        self.conv_xd_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=4) # batch, 96, 91
+
+        # 1D convolution on protein sequence
+        self.embedding_xt = nn.Embedding(25 + 1, 128) # batch, 1000, 128 -> batch, 128, 1000
+        self.conv_xt_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=8) # batch, 32, 993
+        self.conv_xt_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=8) # batch, 64, 986
+        self.conv_xt_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=8) # batch, 96, 979
+        
+        # A2H graph branch
+        self.a2h_gat1 = GATConv(24, 64, heads=5, dropout=dropout, edge_dim=5)
+        self.a2h_gat2 = GATConv(64 * 5, 96, dropout=dropout, edge_dim=5)
+        self.a2h_fc1 = nn.Linear(96, 96)
+        
+        # activation and regularization
+        self.dropout = nn.Dropout(dropout)
+        self.relu = nn.ReLU()
+
+        # dense
+        self.classifier = nn.Sequential(
+            nn.Linear(n_filters * 9, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 1),
+        )
+    
+    def conv_module(self, x, conv1, conv2, conv3):
+        x = conv1(x)
+        x = F.relu(x)
+        x = conv2(x)
+        x = F.relu(x)
+        x = conv3(x)
+        x = F.relu(x)
+        x = F.max_pool1d(x, x.size(2)).squeeze(2)
+        return x
+
+
+    def forward(self, data):
+        drug, target, a2h = data 
+
+        # drug
+        xd = drug.x
+        embedded_xd = self.embedding_xd(xd).permute(0, 2, 1)
+        conv_xd = self.conv_module(embedded_xd, self.conv_xd_1, self.conv_xd_2, self.conv_xd_3)
+
+        # protein
+        xt = target.x
+        embedded_xt = self.embedding_xt(xt).permute(0, 2, 1)
+        conv_xt = self.conv_module(embedded_xt, self.conv_xt_1, self.conv_xt_2, self.conv_xt_3)
+             
+        # A2H graph input feed-forward
+        a2h_x, a2h_edge_index, a2h_edge_attr, a2h_batch = a2h.x, a2h.edge_index, a2h.edge_attr, a2h.batch
+        a2h_x = self.dropout(a2h_x)
+        
+        a2h_x = F.elu(self.a2h_gat1(a2h_x, a2h_edge_index, a2h_edge_attr))
+        a2h_x = self.dropout(a2h_x)
+        a2h_x = self.a2h_gat2(a2h_x, a2h_edge_index, a2h_edge_attr)
+        a2h_x = self.relu(a2h_x)
+        a2h_x = gmp(a2h_x, a2h_batch)
+        a2h_x = self.a2h_fc1(a2h_x)
+        a2h_x = self.relu(a2h_x)
+
+        # concat all modalities
+        xc = torch.cat((conv_xd, conv_xt, a2h_x), 1)  # (batch_size, 96 * 3)
+        
+        # add some dense layers
+        out = self.classifier(xc)
+        return out
+
+
+########################################################################################################################
+########## DeepDTA
+########################################################################################################################
+
+class DeepDTA(torch.nn.Module):
+    def __init__(self, n_filters=32):
+        super(DeepDTA, self).__init__()
+        self.relu = nn.ReLU()
+        self.n_filters = n_filters
+
+        # 1D convolution on smiles sequence
+        self.embedding_xd = nn.Embedding(64 + 1, 128) # batch, 100, 128 -> batch, 128, 100
+        self.conv_xd_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=4) # batch, 32, 97
+        self.conv_xd_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=4) # batch, 64, 94
+        self.conv_xd_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=4) # batch, 96, 91
+
+        # 1D convolution on protein sequence
+        self.embedding_xt = nn.Embedding(25 + 1, 128) # batch, 1000, 128 -> batch, 128, 1000
+        self.conv_xt_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=8) # batch, 32, 993
+        self.conv_xt_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=8) # batch, 64, 986
+        self.conv_xt_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=8) # batch, 96, 979
+
+        # dense
+        self.classifier = nn.Sequential(
+            nn.Linear(n_filters * 6, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(1024, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1),
+        )
+    
+    def conv_module(self, x, conv1, conv2, conv3):
+        x = conv1(x)
+        x = F.relu(x)
+        x = conv2(x)
+        x = F.relu(x)
+        x = conv3(x)
+        x = F.relu(x)
+        x = F.max_pool1d(x, x.size(2)).squeeze(2)
+        return x
+
+    def forward(self, data):
+        drug, target, _ = data
+        xd, xt = drug.x, target.x
+
+        # drug
+        embedded_xd = self.embedding_xd(xd).permute(0, 2, 1)
+        conv_xd = self.conv_module(embedded_xd, self.conv_xd_1, self.conv_xd_2, self.conv_xd_3)
+
+        # protein
+        embedded_xt = self.embedding_xt(xt).permute(0, 2, 1)
+        conv_xt = self.conv_module(embedded_xt, self.conv_xt_1, self.conv_xt_2, self.conv_xt_3)
+        
+        # dense
+        xc = torch.cat((conv_xd, conv_xt), 1)
+        xc = self.classifier(xc)
+        return xc
+
 ########################################################################################################################
 ########## GraphDTA
 ########################################################################################################################
-
-from torch_geometric.nn import GCNConv, GATConv, GINConv
-from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 
 # GAT  model
 class GATNet(torch.nn.Module):

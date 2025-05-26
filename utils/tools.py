@@ -161,7 +161,9 @@ def init_wandb(args, fold_idx=None):
 from process.models import *
 
 def get_model(args):
-    if args.model == 'GraphDTA_GCN':
+    if args.model == 'DeepDTA':
+        model = DeepDTA()
+    elif args.model == 'GraphDTA_GCN':
         model = GCNNet()
     elif args.model == 'GraphDTA_GAT':
         model = GATNet()
@@ -171,6 +173,8 @@ def get_model(args):
         model = GAT_GCN()
     elif args.model == 'A2HNet_GAT':
         model = A2HNet_GAT()
+    elif args.model == 'A2HNet_SEQ':
+        model = A2HNet_SEQ()
     return model
 
 

@@ -491,6 +491,8 @@ dmypy.json
 data/raw/
 data/dummy/
 data/preprocessed/
+data/AF_data_info.csv
+data/final.csv
 
 # .cache/
 
@@ -498,6 +500,8 @@ data/preprocessed/
 # cache/
 *.pkl
 cache/*.pkl
+cache/graph/*.pkl
+cache/seq/*.pkl
 
 # Python
 __pycache__/

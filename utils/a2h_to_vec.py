@@ -11,6 +11,12 @@ from torch_geometric.data import Data
 logger = logging.getLogger(__name__)
 RDLogger.DisableLog('rdApp.*')
 
+import sys
+import os
+# Add the parent directory to the Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
 def calculate_distance(coord1, coord2):
     """Calculate Euclidean distance between two 3D coordinates."""
     return np.sqrt(np.sum((coord1 - coord2) ** 2))
@@ -51,41 +57,45 @@ def read_a2h(file_path: str, all_atom: bool = False, pad: bool = True) -> Data:
     Returns:
         Data: PyTorch Geometric Data object containing the processed tensor
     """
-    # Set maximum length based on atom selection
-    max_len = 1370 if all_atom else 136
+    # # Set maximum length based on atom selection
+    # max_len = 1370 if all_atom else 136
     
     # Load data from pickle file
     with open(file_path, 'rb') as f:
         data = pickle.load(f)
     
-    apo_structures = data['APO']
-    holo_structures = data['HOLO']
+    apo = data['APO']
+    holo = data['HOLO']
+    
+    # ca
+    apo = apo[apo['atom_name'] == 'CA'].iterrows()
+    holo = holo[holo['atom_name'] == 'CA'].iterrows()
     
     # Process each atom pair and calculate features
     node_features = []
     atom_info = []
     
-    for apo, holo in zip(apo_structures, holo_structures):
+    for ap, ho in zip(apo, holo):
+        ap = ap[1]
+        ho = ho[1]
+        
         # Extract atom information
         a_atom_name, a_res_name, a_res_seq, a_coord = (
-            apo['atom_name'], apo['res_name'], apo['res_seq'], apo['coord']
+            ap['atom_name'], ap['res_name'], ap['res_seq'], ap[['x', 'y', 'z']]
         )
+
         h_atom_name, h_res_name, h_res_seq, h_coord = (
-            holo['atom_name'], holo['res_name'], holo['res_seq'], holo['coord']
+            ho['atom_name'], ho['res_name'], ho['res_seq'], ho[['x', 'y', 'z']]
         )
-        
-        # Skip non-CA atoms if all_atom is False
-        if not all_atom and a_atom_name != 'CA':
-            continue
-            
-        # Validate atom correspondence
-        if (a_atom_name, a_res_name, a_res_seq) != (h_atom_name, h_res_name, h_res_seq):
-            logger.warning(
-                f"Atom mismatch detected:\n"
-                f"Apo: {a_atom_name} {a_res_name} {a_res_seq}\n"
-                f"Holo: {h_atom_name} {h_res_name} {h_res_seq}"
-            )
-            continue
+           
+        # # Validate atom correspondence
+        # if (a_atom_name, a_res_name, a_res_seq) != (h_atom_name, h_res_name, h_res_seq):
+        #     logger.warning(
+        #         f"Atom mismatch detected:\n"
+        #         f"Apo: {a_atom_name} {a_res_name} {a_res_seq}\n"
+        #         f"Holo: {h_atom_name} {h_res_name} {h_res_seq}"
+        #     )
+        #     continue
         
         # Calculate features for each node
         displacement = h_coord - a_coord  # Displacement vector
@@ -160,7 +170,27 @@ def read_a2h(file_path: str, all_atom: bool = False, pad: bool = True) -> Data:
 
 # Example usage
 if __name__ == "__main__":
-    file_path = Path(__file__).parent.parent / "data" / "a2h" / '1eb2_vec.pkl'
+    # for file in Path("data/preprocessed/a2h").glob('*.pkl'):
+    #     # Load data from pickle file
+    #     with open(file, 'rb') as f:
+    #         data = pickle.load(f)
+        
+    #     apo = data['APO']
+    #     holo = data['HOLO']
+        
+    #     # ca
+    #     apo = apo[apo['atom_name'] == 'CA']
+    #     holo = holo[holo['atom_name'] == 'CA']
+        
+    #     if len(apo) != len(holo):
+    #         print(f"Length mismatch for {file}")
+    #         print(len(apo), len(holo))
+    #         continue
+    # print('Done')
+        
+            
+        
+    file_path = Path("data") / "preprocessed" / "a2h" / '1nu1_a2h.pkl'
     # for file in file_path.glob('*.pkl'):
     result = read_a2h(str(file_path))
     if result.x.sum() > len(result.x):
