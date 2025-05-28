@@ -4,10 +4,8 @@
 
 # https://github.com/hkmztrk/DeepDTA
 # https://github.com/thinng/GraphDTA
-# https://github.com/peizhenbai/DrugBAN
-# https://github.com/595693085/DGraphDTA/tree/master
-# https://github.com/JK-Liu7/AttentionMGT-DTA/tree/main
-# https://github.com/zhaoqichang/AttentionDTA_TCBB/tree/main
+# https://github.com/KailiWang1/DeepDTAF
+# https://github.com/lennylv/CAPLA
 
 ########################################################################################################################
 ########## Import
@@ -22,6 +20,8 @@ from torch.nn.utils.weight_norm import weight_norm
 
 from torch_geometric.nn import GCNConv, GATConv, GINConv
 from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
+
+from utils.seq_to_vec import CHARISOSMILEN, CHARPROTLEN
 
 ########################################################################################################################
 ########## A2H-Net
@@ -116,13 +116,13 @@ class A2HNet_SEQ(torch.nn.Module):
         super(A2HNet_SEQ, self).__init__()
 
         # 1D convolution on smiles sequence
-        self.embedding_xd = nn.Embedding(64 + 1, 128) # batch, 100, 128 -> batch, 128, 100
+        self.embedding_xd = nn.Embedding(CHARISOSMILEN + 1, 128) # batch, 100, 128 -> batch, 128, 100
         self.conv_xd_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=4) # batch, 32, 97
         self.conv_xd_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=4) # batch, 64, 94
         self.conv_xd_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=4) # batch, 96, 91
 
         # 1D convolution on protein sequence
-        self.embedding_xt = nn.Embedding(25 + 1, 128) # batch, 1000, 128 -> batch, 128, 1000
+        self.embedding_xt = nn.Embedding(CHARPROTLEN + 1, 128) # batch, 1000, 128 -> batch, 128, 1000
         self.conv_xt_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=8) # batch, 32, 993
         self.conv_xt_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=8) # batch, 64, 986
         self.conv_xt_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=8) # batch, 96, 979
@@ -141,12 +141,12 @@ class A2HNet_SEQ(torch.nn.Module):
             nn.Linear(n_filters * 9, 1024),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(1024, 512),
+            nn.Linear(1024, 1024),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(512, 256),
+            nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(256, 1),
+            nn.Linear(512, 1),
         )
     
     def conv_module(self, x, conv1, conv2, conv3):
@@ -204,13 +204,13 @@ class DeepDTA(torch.nn.Module):
         self.n_filters = n_filters
 
         # 1D convolution on smiles sequence
-        self.embedding_xd = nn.Embedding(64 + 1, 128) # batch, 100, 128 -> batch, 128, 100
+        self.embedding_xd = nn.Embedding(CHARISOSMILEN + 1, 128) # batch, 100, 128 -> batch, 128, 100
         self.conv_xd_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=4) # batch, 32, 97
         self.conv_xd_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=4) # batch, 64, 94
         self.conv_xd_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=4) # batch, 96, 91
 
         # 1D convolution on protein sequence
-        self.embedding_xt = nn.Embedding(25 + 1, 128) # batch, 1000, 128 -> batch, 128, 1000
+        self.embedding_xt = nn.Embedding(CHARPROTLEN + 1, 128) # batch, 1000, 128 -> batch, 128, 1000
         self.conv_xt_1 = nn.Conv1d(in_channels=128, out_channels=n_filters, kernel_size=8) # batch, 32, 993
         self.conv_xt_2 = nn.Conv1d(in_channels=n_filters, out_channels=n_filters * 2, kernel_size=8) # batch, 64, 986
         self.conv_xt_3 = nn.Conv1d(in_channels=n_filters * 2, out_channels=n_filters * 3, kernel_size=8) # batch, 96, 979
@@ -241,7 +241,7 @@ class DeepDTA(torch.nn.Module):
     def forward(self, data):
         drug, target, _ = data
         xd, xt = drug.x, target.x
-
+        
         # drug
         embedded_xd = self.embedding_xd(xd).permute(0, 2, 1)
         conv_xd = self.conv_module(embedded_xd, self.conv_xd_1, self.conv_xd_2, self.conv_xd_3)
@@ -261,7 +261,7 @@ class DeepDTA(torch.nn.Module):
 
 # GAT  model
 class GATNet(torch.nn.Module):
-    def __init__(self, num_features_xd=78, n_output=1, num_features_xt=25,
+    def __init__(self, num_features_xd=78, n_output=1,
                      n_filters=32, embed_dim=128, output_dim=128, dropout=0.2):
         super(GATNet, self).__init__()
 
@@ -271,7 +271,7 @@ class GATNet(torch.nn.Module):
         self.fc_g1 = nn.Linear(output_dim, output_dim)
 
         # 1D convolution on protein sequence
-        self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
+        self.embedding_xt = nn.Embedding(CHARPROTLEN + 1, embed_dim)
         self.conv_xt1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc_xt1 = nn.Linear(32*121, output_dim)
 
@@ -325,7 +325,7 @@ class GATNet(torch.nn.Module):
 
 # GCN-CNN based model
 class GAT_GCN(torch.nn.Module):
-    def __init__(self, n_output=1, num_features_xd=78, num_features_xt=25,
+    def __init__(self, n_output=1, num_features_xd=78,
                  n_filters=32, embed_dim=128, output_dim=128, dropout=0.2):
 
         super(GAT_GCN, self).__init__()
@@ -339,7 +339,7 @@ class GAT_GCN(torch.nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # 1D convolution on protein sequence
-        self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
+        self.embedding_xt = nn.Embedding(CHARPROTLEN + 1, embed_dim)
         self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
@@ -386,7 +386,7 @@ class GAT_GCN(torch.nn.Module):
 
 # GCN based model
 class GCNNet(torch.nn.Module):
-    def __init__(self, n_output=1, n_filters=32, embed_dim=128,num_features_xd=78, num_features_xt=25, output_dim=128, dropout=0.2):
+    def __init__(self, n_output=1, n_filters=32, embed_dim=128,num_features_xd=78, output_dim=128, dropout=0.2):
 
         super(GCNNet, self).__init__()
 
@@ -401,7 +401,7 @@ class GCNNet(torch.nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # protein sequence branch (1d conv)
-        self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
+        self.embedding_xt = nn.Embedding(CHARPROTLEN + 1, embed_dim)
         self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
@@ -456,7 +456,7 @@ class GCNNet(torch.nn.Module):
 
 # GINConv model
 class GINConvNet(torch.nn.Module):
-    def __init__(self, n_output=1,num_features_xd=78, num_features_xt=25,
+    def __init__(self, n_output=1,num_features_xd=78,
                  n_filters=32, embed_dim=128, output_dim=128, dropout=0.2):
 
         super(GINConvNet, self).__init__()
@@ -489,7 +489,7 @@ class GINConvNet(torch.nn.Module):
         self.fc1_xd = Linear(dim, output_dim)
 
         # 1D convolution on protein sequence
-        self.embedding_xt = nn.Embedding(num_features_xt + 1, embed_dim)
+        self.embedding_xt = nn.Embedding(CHARPROTLEN + 1, embed_dim)
         self.conv_xt_1 = nn.Conv1d(in_channels=1000, out_channels=n_filters, kernel_size=8)
         self.fc1_xt = nn.Linear(32*121, output_dim)
 
@@ -535,3 +535,429 @@ class GINConvNet(torch.nn.Module):
         xc = self.dropout(xc)
         out = self.out(xc)
         return out
+
+########################################################################################################################
+########## DeepDTAF & CAPLA
+########################################################################################################################
+
+PT_FEATURE_SIZE = 40
+
+class Squeeze(nn.Module):   #Dimention Module
+    def forward(self, input: torch.Tensor):
+        return input.squeeze()
+
+
+class DilatedConv(nn.Module):     # Dilated Convolution
+    def __init__(self, nIn, nOut, kSize, stride=1, d=1):
+        super().__init__()
+        padding = int((kSize - 1) / 2) * d
+        self.conv = nn.Conv1d(nIn, nOut, kSize, stride=stride, padding=padding, bias=False, dilation=d)
+
+    def forward(self, input):
+        output = self.conv(input)
+        return output
+
+
+class DilatedConvBlockA(nn.Module):
+    def __init__(self, nIn, nOut, add=True):
+        super().__init__()
+        n = int(nOut / 5)
+        n1 = nOut - 4 * n
+        self.c1 = nn.Conv1d(nIn, n, 1, padding=0)  # Down Dimention
+        self.br1 = nn.Sequential(nn.BatchNorm1d(n), nn.PReLU())
+        self.d1 = DilatedConv(n, n1, 3, 1, 1)    # Dilated scale:1(2^0)
+        self.d2 = DilatedConv(n, n, 3, 1, 2)     # Dilated scale:2(2^1)
+        self.d4 = DilatedConv(n, n, 3, 1, 4)     # Dilated scale:4(2^2)
+        self.d8 = DilatedConv(n, n, 3, 1, 8)     # Dilated scale:8(2^3)
+        self.d16 = DilatedConv(n, n, 3, 1, 16)   # Dilated scale:16(2^4)
+        self.br2 = nn.Sequential(nn.BatchNorm1d(nOut), nn.PReLU())
+
+        if nIn != nOut:
+            add = False
+        self.add = add
+
+    def forward(self, input):
+        output1 = self.c1(input)
+        output1 = self.br1(output1)
+
+        d1 = self.d1(output1)
+        d2 = self.d2(output1)
+        d4 = self.d4(output1)
+        d8 = self.d8(output1)
+        d16 = self.d16(output1)
+
+        add1 = d2
+        add2 = add1 + d4
+        add3 = add2 + d8
+        add4 = add3 + d16
+
+        combine = torch.cat([d1, add1, add2, add3, add4], 1)
+
+        if self.add:
+            combine = input + combine
+        output = self.br2(combine)
+        return output
+    
+    
+class DilatedConvBlockB(nn.Module):
+    def __init__(self, nIn, nOut, add=True):
+        super().__init__()
+        n = int(nOut / 4)
+        n1 = nOut - 3 * n
+        self.c1 = nn.Conv1d(nIn, n, 1, padding=0)
+        self.br1 = nn.Sequential(nn.BatchNorm1d(n), nn.PReLU())
+        self.d1 = DilatedConv(n, n1, 3, 1, 1)  # Dilated scale:1(2^0)
+        self.d2 = DilatedConv(n, n, 3, 1, 2)   # Dilated scale:2(2^1)
+        self.d4 = DilatedConv(n, n, 3, 1, 4)   # Dilated scale:4(2^2)
+        self.d8 = DilatedConv(n, n, 3, 1, 8)   # Dilated scale:8(2^3)
+        self.br2 = nn.Sequential(nn.BatchNorm1d(nOut), nn.PReLU())
+
+        if nIn != nOut:
+            add = False
+        self.add = add
+
+    def forward(self, input):
+
+        output1 = self.c1(input)
+        output1 = self.br1(output1)
+        d1 = self.d1(output1)
+        d2 = self.d2(output1)
+        d4 = self.d4(output1)
+        d8 = self.d8(output1)
+
+        add1 = d2
+        add2 = add1 + d4
+        add3 = add2 + d8
+
+        combine = torch.cat([d1, add1, add2, add3], 1)
+
+        if self.add:
+            combine = input + combine
+        output = self.br2(combine)
+        return output
+
+
+class DeepDTAF(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+
+        smi_embed_size = 128
+        seq_embed_size = 128
+        
+        seq_oc = 128
+        pkt_oc = 128
+        smi_oc = 128
+
+        self.smi_embed = nn.Embedding(CHARISOSMILEN + 1, smi_embed_size)
+        self.seq_embed = nn.Linear(PT_FEATURE_SIZE, seq_embed_size)  # (N, *, H_{in}) -> (N, *, H_{out})
+
+        conv_seq = []
+        ic = seq_embed_size
+        for oc in [32, 64, 64, seq_oc]:
+            conv_seq.append(DilatedConvBlockA(ic, oc))
+            ic = oc
+        conv_seq.append(nn.AdaptiveMaxPool1d(1))  # (N, oc)
+        conv_seq.append(Squeeze())
+        self.conv_seq = nn.Sequential(*conv_seq)
+
+        # (N, H=32, L)
+        conv_pkt = []
+        ic = seq_embed_size
+        for oc in [32, 64, pkt_oc]:
+            conv_pkt.append(nn.Conv1d(ic, oc, 3))  # (N,C,L)
+            conv_pkt.append(nn.BatchNorm1d(oc))
+            conv_pkt.append(nn.PReLU())
+            ic = oc
+        conv_pkt.append(nn.AdaptiveMaxPool1d(1))
+        conv_pkt.append(Squeeze())
+        self.conv_pkt = nn.Sequential(*conv_pkt)  # (N,oc)
+
+        conv_smi = []
+        ic = smi_embed_size
+        for oc in [32, 64, smi_oc]:
+            conv_smi.append(DilatedConvBlockB(ic, oc))
+            ic = oc
+        conv_smi.append(nn.AdaptiveMaxPool1d(1))
+        conv_smi.append(Squeeze())
+        self.conv_smi = nn.Sequential(*conv_smi)  # (N,128)
+        
+        
+        self.cat_dropout = nn.Dropout(0.2)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(seq_oc+pkt_oc+smi_oc, 128),
+            nn.Dropout(0.5),
+            nn.PReLU(),
+            nn.Linear(128, 64),
+            nn.Dropout(0.5),
+            nn.PReLU(),
+            nn.Linear(64,1),
+            nn.PReLU())
+        
+
+    def forward(self, data):
+        smi, seq, pkt = data[0].x, data[1].x, data[2].x
+        
+        # assert seq.shape == (N,L,43)
+        seq_embed = self.seq_embed(seq)  # (N,L,32)
+        seq_embed = torch.transpose(seq_embed, 1, 2)  # (N,32,L)
+        seq_conv = self.conv_seq(seq_embed)  # (N,128)
+
+        # assert pkt.shape == (N,L,43)
+        
+        pkt_embed = self.seq_embed(pkt)  # (N,L,32)
+        pkt_embed = torch.transpose(pkt_embed, 1, 2)
+        pkt_conv = self.conv_pkt(pkt_embed)  # (N,128)
+
+        # assert smi.shape == (N, L)
+        smi_embed = self.smi_embed(smi)  # (N,L,32)
+        smi_embed = torch.transpose(smi_embed, 1, 2)
+        smi_conv = self.conv_smi(smi_embed)  # (N,128)
+
+        cat = torch.cat([seq_conv, pkt_conv, smi_conv], dim=1)  # (N,128*3)
+        cat = self.cat_dropout(cat)
+        
+        output = self.classifier(cat)
+        return output
+
+
+class CAPLA(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        smi_embed_size = 128
+        seq_embed_size = 128
+
+        seq_oc = 128
+        pkt_oc = 64
+        smi_oc = 128
+        td_oc = 32
+
+        # SMILES, POCKET, PROTEIN Embedding
+        self.smi_embed = nn.Embedding(CHARISOSMILEN + 1, smi_embed_size)
+        self.seq_embed = nn.Linear(PT_FEATURE_SIZE, seq_embed_size)
+
+        # Global DilatedConv Module
+        conv_seq = []
+        ic = seq_embed_size
+        for oc in [32, 64, 64, seq_oc]:
+            conv_seq.append(DilatedConvBlockA(ic, oc))
+            ic = oc
+        conv_seq.append(nn.AdaptiveMaxPool1d(1))
+        conv_seq.append(Squeeze())
+        self.conv_seq = nn.Sequential(*conv_seq)
+
+        # Pocket DilatedConv Module
+        conv_pkt = []
+        ic = seq_embed_size
+        for oc in [32, 64, pkt_oc]:
+            conv_pkt.append(nn.Conv1d(ic, oc, 3))
+            conv_pkt.append(nn.BatchNorm1d(oc))
+            conv_pkt.append(nn.PReLU())
+            ic = oc
+        conv_pkt.append(nn.AdaptiveMaxPool1d(1))
+        conv_pkt.append(Squeeze())
+        self.conv_pkt = nn.Sequential(*conv_pkt)
+        
+        td_conv = []
+        ic = 1
+        for oc in [16, 32, td_oc * 2]:
+            td_conv.append(DilatedConvBlockA(ic, oc))
+            ic = oc
+        td_conv.append(nn.AdaptiveMaxPool1d(1))
+        td_conv.append(Squeeze())
+        self.td_conv = nn.Sequential(*td_conv)
+
+        td_onlyconv = []
+        ic = 1
+        for oc in [16, 32, td_oc]:
+            td_onlyconv.append(DilatedConvBlockA(ic, oc))
+            ic = oc
+        self.td_onlyconv = nn.Sequential(*td_onlyconv)
+
+        # Ligand DilatedConv Module
+        conv_smi = []
+        ic = smi_embed_size
+
+        # Cross-Attention Module
+        self.smi_attention_poc = EncoderLayer(128, 128, 0.1, 0.1, 2)  # 注意力机制
+        self.tdpoc_attention_tdlig = EncoderLayer(32, 64, 0.1, 0.1, 1)
+        
+        self.adaptmaxpool = nn.AdaptiveMaxPool1d(1)
+        self.squeeze = Squeeze()
+
+        for oc in [32, 64, smi_oc]:
+            conv_smi.append(DilatedConvBlockB(ic, oc))
+            ic = oc
+        conv_smi.append(nn.AdaptiveMaxPool1d(1))
+        conv_smi.append(Squeeze())
+        self.conv_smi = nn.Sequential(*conv_smi)
+
+        # Dropout
+        self.cat_dropout = nn.Dropout(0.2)
+        # FNN
+        self.classifier = nn.Sequential(
+            nn.Linear(seq_oc + pkt_oc + smi_oc, 256),
+            nn.Dropout(0.5),
+            nn.PReLU(),
+            nn.Linear(256, 128),
+            nn.Dropout(0.5),
+            nn.PReLU(),
+            nn.Linear(128, 1),
+        )
+
+    def forward(self, data):
+        smi, seq, pkt = data[0].x, data[1].x, data[2].x
+
+        # D(B_s,N,L)
+        seq_embed = self.seq_embed(seq)
+        seq_embed = torch.transpose(seq_embed, 1, 2)
+        seq_conv = self.conv_seq(seq_embed)
+
+        pkt_embed = self.seq_embed(pkt)
+        smi_embed = self.smi_embed(smi)
+        smi_attention = smi_embed
+
+        smi_embed = self.smi_attention_poc(smi_embed, pkt_embed)
+        pkt_embed = self.smi_attention_poc(pkt_embed, smi_attention)
+
+        pkt_embed = torch.transpose(pkt_embed, 1, 2)
+        pkt_conv = self.conv_pkt(pkt_embed)
+
+        smi_embed = torch.transpose(smi_embed, 1, 2)
+        smi_conv = self.conv_smi(smi_embed)
+
+        concat = torch.cat([seq_conv, pkt_conv, smi_conv], dim=1)
+        concat = self.cat_dropout(concat)
+        output = self.classifier(concat)
+        return output
+    
+
+class FeedForwardNetwork(nn.Module):
+    def __init__(self, hidden_size, ffn_size):
+        super(FeedForwardNetwork, self).__init__()
+
+        self.layer1 = nn.Linear(hidden_size, ffn_size)
+        self.gelu = nn.ReLU(inplace=True)
+        self.layer2 = nn.Linear(ffn_size, hidden_size)
+
+    def forward(self, x):
+        x = self.layer1(x)
+        x = self.gelu(x)
+        x = self.layer2(x)
+        return x
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, hidden_size, attention_dropout_rate, num_heads):
+        super(MultiHeadAttention, self).__init__()
+
+        self.num_heads = num_heads
+
+        self.att_size = att_size = hidden_size // num_heads
+        self.scale = att_size ** -0.5
+
+        self.linear_q = nn.Linear(hidden_size, num_heads * att_size)
+        self.linear_k = nn.Linear(hidden_size, num_heads * att_size)
+        self.linear_v = nn.Linear(hidden_size, num_heads * att_size)
+        self.att_dropout = nn.Dropout(attention_dropout_rate)
+
+        self.output_layer = nn.Linear(num_heads * att_size, hidden_size)
+
+    def forward(self, q, k, v, attn_bias=None):
+        orig_q_size = q.size()
+
+        d_k = self.att_size
+        d_v = self.att_size
+        batch_size = q.size(0)
+
+        q = self.linear_q(q).view(batch_size, -1, self.num_heads, d_k)
+        k = self.linear_k(k).view(batch_size, -1, self.num_heads, d_k)
+        v = self.linear_v(v).view(batch_size, -1, self.num_heads, d_v)
+
+        q = q.transpose(1, 2)  # [b, h, q_len, d_k]
+        v = v.transpose(1, 2)  # [b, h, v_len, d_v]
+        k = k.transpose(1, 2).transpose(2, 3)  # [b, h, d_k, k_len]
+
+        # Scaled Dot-Product Attention.
+        # Attention(Q, K, V) = softmax((QK^T)/sqrt(d_k))V
+        q = q * self.scale
+        x = torch.matmul(q, k)  # [b, h, q_len, k_len]
+        if attn_bias is not None:
+            x = x + attn_bias
+        x = torch.softmax(x, dim=3)
+
+        # temp = x.cpu().numpy()
+        # temp = temp.mean(axis=2)
+
+        x = self.att_dropout(x)
+        x = x.matmul(v)  # [b, h, q_len, attn]
+        
+        x = x.transpose(1, 2).contiguous()  # [b, q_len, h, attn]
+        x = x.view(batch_size, -1, self.num_heads * d_v)
+        
+        x = self.output_layer(x)
+        
+        assert x.size() == orig_q_size
+        return x
+
+
+class EncoderLayer(nn.Module):
+    def __init__(self, hidden_size, ffn_size, dropout_rate, attention_dropout_rate, num_heads):
+        super(EncoderLayer, self).__init__()
+
+        self.self_attention_norm = nn.LayerNorm(hidden_size)
+        self.self_attention = MultiHeadAttention(
+            hidden_size, attention_dropout_rate, num_heads)
+        self.self_attention_dropout = nn.Dropout(dropout_rate)
+
+        self.ffn_norm = nn.LayerNorm(hidden_size)
+        self.ffn = FeedForwardNetwork(hidden_size, ffn_size)
+        self.ffn_dropout = nn.Dropout(dropout_rate)
+
+    def forward(self, x, kv, attn_bias=None):
+        y = self.self_attention_norm(x)
+        kv = self.self_attention_norm(kv)
+        y = self.self_attention(y, kv, kv, attn_bias)
+        y = self.self_attention_dropout(y)
+        x = x + y
+
+        y = self.ffn_norm(x)
+        y = self.ffn(y)
+        y = self.ffn_dropout(y)
+        x = x + y
+        return x
+    
+if __name__ == "__main__":
+    # 모델 인스턴스 생성
+    # model = DeepDTAF()
+    model = CAPLA()
+
+    # 예제 입력 텐서 생성
+    batch_size = 2
+    seq_len = 100
+    feature_dim = 40
+    smi_len = 120
+
+    seq_tensor = torch.randn(batch_size, seq_len, feature_dim)  # (N, L, 40)
+    pkt_tensor = torch.randn(batch_size, seq_len, feature_dim)  # (N, L, 40)
+    smi_tensor = torch.randint(0, 64, (batch_size, smi_len))     # (N, L)
+    
+    # 모델 실행
+    output = model(seq_tensor, pkt_tensor, smi_tensor)
+
+    # 결과 출력
+    print("Output shape:", output.shape)
+    print("Output values:", output)
+    
+    
+    
+    # import torch
+    # import torch.nn as nn
+    
+    # lienar = torch.nn.Linear(40, 128)
+    # x = torch.randn(256, 1000, 40)
+    # x.shape
+    # output = lienar(x)
+    # print(output.shape)

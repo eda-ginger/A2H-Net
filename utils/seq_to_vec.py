@@ -25,9 +25,9 @@ CHARSMISET = {"(": 1, ".": 2, "0": 3, "2": 4, "4": 5, "6": 6, "8": 7, "@": 8,
                 "-": 33, "/": 34, "1": 35, "3": 36, "5": 37, "7": 38, "9": 39, "=": 40,
                 "A": 41, "C": 42, "E": 43, "G": 44, "I": 45, "K": 46, "M": 47, "O": 48,
                 "S": 49, "U": 50, "W": 51, "Y": 52, "[": 53, "]": 54, "a": 55, "c": 56,
-                "e": 57, "g": 58, "i": 59, "m": 60, "o": 61, "s": 62, "u": 63, "y": 64}
+                "e": 57, "g": 58, "i": 59, "m": 60, "o": 61, "s": 62, "u": 63, "y": 64, '~': 65} # add ~: 65 
 
-CHARISOSMILEN = 64
+CHARISOSMILEN = 65
 
 CHARPROTSET = {"A": 1, "C": 2, "B": 3, "E": 4, "D": 5, "G": 6,
                "F": 7, "I": 8, "H": 9, "K": 10, "M": 11, "L": 12,
@@ -50,7 +50,6 @@ def integer_label_encoding(sequence, tp, max_length=1000):
         max_length: Maximum encoding length of input string.
     """
     if tp == 'drug':
-        max_length = 100
         charset = CHARSMISET
     elif tp == 'protein':
         charset = CHARPROTSET

@@ -175,6 +175,10 @@ def get_model(args):
         model = A2HNet_GAT()
     elif args.model == 'A2HNet_SEQ':
         model = A2HNet_SEQ()
+    elif args.model == 'DeepDTAF':
+        model = DeepDTAF()
+    elif args.model == 'CAPLA':
+        model = CAPLA()
     return model
 
 

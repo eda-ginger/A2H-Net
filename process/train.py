@@ -20,7 +20,10 @@ from utils.tools import get_model
 from config import set_config # Keep for potential use, though args come from main.py
 from utils.tools import set_seed, get_device, count_parameters, save_checkpoint, load_checkpoint
 from utils.metrics import calculate_regression_metrics
-from process.prepare import PrepareData, CustomDataset
+from process.prepare import CustomDataset
+
+# amp
+from torch.cuda.amp import autocast, GradScaler
 
 # Configure logging
 logging.basicConfig(
@@ -31,7 +34,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold_idx):
+def train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold_idx, scaler, scheduler, args):
     model.train()
     total_loss = 0
     
@@ -40,18 +43,34 @@ def train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold
                 leave=True, dynamic_ncols=True)
     
     for batch_idx, (inputs, affinities) in enumerate(pbar):
-        ligands, sequences, a2hs = inputs
+        ligands, sequences, pockets = inputs
         
         ligands = ligands.to(device)
         sequences = sequences.to(device)
-        a2hs = a2hs.to(device)
+        pockets = pockets.to(device)
         affinities = affinities.to(device)
 
         optimizer.zero_grad()
-        predictions = model((ligands, sequences, a2hs))
-        loss = loss_fn(predictions, affinities)
-        loss.backward()
-        optimizer.step()
+        
+        if args.apex:
+            with autocast():
+                predictions = model((ligands, sequences, pockets))
+                loss = loss_fn(predictions, affinities)
+            
+            # Scaler 사용
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            if args.scheduler:
+                scheduler.step()
+        else:
+            predictions = model((ligands, sequences, pockets))
+            loss = loss_fn(predictions, affinities)
+            loss.backward()
+            if args.scheduler:
+                scheduler.step()
+            else:
+                optimizer.step()
 
         total_loss += loss.item()
         
@@ -100,7 +119,11 @@ def Train_CV(args):
     overall_test_metrics = {'CORE': [], 'CSAR': []}
     
     # path
-    cache_path = Path(args.cache_dir) / args.ligand
+    if args.model in ['DeepDTAF', 'CAPLA']:
+        cache_path = Path(args.cache_dir) / 'pocket'
+    else:
+        cache_path = Path(args.cache_dir) / args.ligand
+    logger.info(f"Cache path: {cache_path}")
 
     for fold_idx in range(1, args.n_splits + 1):
         logger.info(f"\n--- Starting Fold {fold_idx}/{args.n_splits} ---")
@@ -139,7 +162,7 @@ def Train_CV(args):
             continue
             
         # create dataloaders
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, 
+        trn_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, 
                                 collate_fn=CustomDataset.collate_fn, num_workers=args.n_workers)
         val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, 
                               collate_fn=CustomDataset.collate_fn, num_workers=args.n_workers)
@@ -148,8 +171,27 @@ def Train_CV(args):
         model = get_model(args).to(device)
         logger.info(f"Model: {args.model} | Parameters: {count_parameters(model)}")
 
-        optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-        loss_fn = nn.MSELoss()
+        # optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+        optimizer = optim.AdamW(model.parameters())
+        
+        if args.loss == 'mse_mean':
+            loss_fn = nn.MSELoss(reduction='mean')
+        elif args.loss == 'mse_sum':
+            loss_fn = nn.MSELoss(reduction='sum')
+        else:
+            raise ValueError(f"Invalid loss function: {args.loss}")
+        
+        if args.apex:
+            scaler = GradScaler()
+        else:
+            scaler = None
+        
+        if args.scheduler:
+            scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=5e-3, 
+                                                      epochs=args.n_epochs, 
+                                                      steps_per_epoch=len(trn_loader))
+        else:
+            scheduler = None
 
         best_val_metric = float('inf')
         epochs_no_improve = 0
@@ -161,16 +203,22 @@ def Train_CV(args):
         # Training loop
         logger.info(f"Starting training for fold {fold_idx} from epoch {start_epoch+1}")
         for epoch in range(start_epoch + 1, args.n_epochs + 1):
-            train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold_idx)
+            train_loss = train_one_epoch(model, trn_loader, optimizer, loss_fn, device, epoch, fold_idx, scaler, scheduler, args)
             val_loss, val_metrics = evaluate(model, val_loader, loss_fn, device)
 
-            current_val_metric = val_metrics['rmse']
+            if args.aim == 'rmse':
+                current_val_metric = val_metrics['rmse']
+            elif args.aim == 'loss':
+                current_val_metric = val_loss
+            else:
+                raise ValueError(f"Invalid aim: {args.aim}")
+
             if current_val_metric < best_val_metric:
-                logger.info(f"New best validation RMSE: {current_val_metric:.4f}")
+                logger.info(f"New best validation {args.aim.upper()}: {current_val_metric:.4f}")
                 best_val_metric = current_val_metric
                 epochs_no_improve = 0
                 
-                filename = f"checkpoint_epoch{epoch}.pt" if epoch % 10 == 0 else 'checkpoint_last.pt'
+                filename = 'checkpoint_last.pt'
                 save_checkpoint({
                     'epoch': epoch,
                     'state_dict': model.state_dict(),
@@ -217,6 +265,12 @@ def Train_CV(args):
             
             _, test_metrics = evaluate(model_test, test_loader, loss_fn, device)
             overall_test_metrics[test_set_name].append(test_metrics)
+            
+            # save fold's test metrics
+            fold_metrics_file = fold_output_dir / f"{test_set_name}_metrics.json"
+            test_metrics_serializable = {k: float(v) for k, v in test_metrics.items()}
+            with open(fold_metrics_file, 'w') as f:
+                json.dump(test_metrics_serializable, f, indent=4)
 
             if args.use_wandb:
                 wandb.log({

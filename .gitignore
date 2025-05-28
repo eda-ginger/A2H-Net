@@ -493,15 +493,17 @@ data/dummy/
 data/preprocessed/
 data/AF_data_info.csv
 data/final.csv
+demo/
+summaries.csv
 
 # .cache/
 
 # Cache files
 # cache/
-*.pkl
-cache/*.pkl
-cache/graph/*.pkl
-cache/seq/*.pkl
+# *.pkl
+# cache/*.pkl
+cache/*
+!cache/*.json
 
 # Python
 __pycache__/
