@@ -36,13 +36,14 @@ def set_config():
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use for training')
 
     # details
+    
     parser.add_argument('--apex', action=argparse.BooleanOptionalAction, default=False, help='Use APEX for training')
     parser.add_argument('--scheduler', action=argparse.BooleanOptionalAction, default=False, help='Use scheduler for training')
     parser.add_argument('--loss', type=str, default='mse_mean', choices=['mse_mean', 'mse_sum'], help='Loss function for training')
     parser.add_argument('--aim', type=str, default='rmse', choices=['rmse', 'mse'], help='Aim for training')
 
     # # Model arguments
-    parser.add_argument('--model', type=str, default='DeepDTAF', help='Name of the model to use')
+    parser.add_argument('--model', type=str, default='DeepDTA', help='Name of the model to use')
     
     # Logging arguments
     parser.add_argument('--project', type=str, default='Basic', help='Directory to save checkpoints and logs')
