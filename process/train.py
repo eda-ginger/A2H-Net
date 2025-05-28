@@ -53,6 +53,7 @@ def train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold
         optimizer.zero_grad()
         
         if args.apex:
+            print("apex")
             with autocast():
                 predictions = model((ligands, sequences, pockets))
                 loss = loss_fn(predictions, affinities)
@@ -62,6 +63,7 @@ def train_one_epoch(model, train_loader, optimizer, loss_fn, device, epoch, fold
             scaler.step(optimizer)
             scaler.update()
             if args.scheduler:
+                print("scheduler")
                 scheduler.step()
         else:
             predictions = model((ligands, sequences, pockets))

@@ -26,7 +26,7 @@ def set_config():
     # np.random.randint(33927, 33928)
     # np.random.randint(16875,16876)
     parser.add_argument('--seed', type=int, default=2025, help='Random seed for reproducibility')
-    parser.add_argument('--n_epochs', type=int, default=40, help='Number of training epochs')
+    parser.add_argument('--n_epochs', type=int, default=3, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training and evaluation')
     parser.add_argument('--learning_rate', '--lr', type=float, default=1e-3, help='Initial learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-5, help='Weight decay for optimizer')
@@ -36,13 +36,13 @@ def set_config():
     parser.add_argument('--gpu', type=int, default=0, help='GPU ID to use for training')
 
     # details
-    parser.add_argument('--apex', action=argparse.BooleanOptionalAction, default=True, help='Use APEX for training')
+    parser.add_argument('--apex', action=argparse.BooleanOptionalAction, default=False, help='Use APEX for training')
     parser.add_argument('--scheduler', action=argparse.BooleanOptionalAction, default=False, help='Use scheduler for training')
     parser.add_argument('--loss', type=str, default='mse_mean', choices=['mse_mean', 'mse_sum'], help='Loss function for training')
-    parser.add_argument('--aim', type=str, default='rmse', choices=['rmse', 'loss'], help='Aim for training')
+    parser.add_argument('--aim', type=str, default='rmse', choices=['rmse', 'mse'], help='Aim for training')
 
     # # Model arguments
-    parser.add_argument('--model', type=str, default='CAPLA', help='Name of the model to use')
+    parser.add_argument('--model', type=str, default='DeepDTAF', help='Name of the model to use')
     
     # Logging arguments
     parser.add_argument('--project', type=str, default='Basic', help='Directory to save checkpoints and logs')

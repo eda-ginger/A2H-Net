@@ -56,6 +56,8 @@ class PrepareData:
         # self.cache_path = Path(args.cache_dir)
         if args.model in ['DeepDTAF', 'CAPLA']:
             self.cache_path = Path(args.cache_dir) / 'pocket'
+        elif args.model in ['A2HNet_SEQ']:
+            self.cache_path = Path(args.cache_dir) / 'a2h_seq'
         else:
             self.cache_path = Path(args.cache_dir) / args.ligand
         self.cache_path.mkdir(parents=True, exist_ok=True)
@@ -150,9 +152,10 @@ class PrepareData:
         else:
             protein = integer_label_encoding(sample['Global'], tp='protein', max_length=1000)
             
-            # a2h = read_a2h(self.a2h_path / f"{pdb}_a2h.pkl")
-            # dummy a2h
-            a2h = Data(x=torch.randn(1, 10))
+            if self.args.model in ['A2HNet_SEQ']:
+                a2h = read_a2h(self.a2h_path / f"{pdb}_a2h.pkl")
+            else:
+                a2h = Data(x=torch.randn(1, 10))
         
             # Check for missing data
             if ligand is None or protein is None or a2h is None or affinity is None:
@@ -210,6 +213,9 @@ if __name__ == "__main__":
         # Load data from cache (example)
         if args.model in ['DeepDTAF', 'CAPLA']:
             with open('cache/pocket/fold_1_val.pkl', 'rb') as f:
+                data = pickle.load(f)
+        elif args.model in ['A2HNet_SEQ']:
+            with open('cache/a2h_seq/fold_1_val.pkl', 'rb') as f:
                 data = pickle.load(f)
         else:
             with open('cache/seq/fold_1_val.pkl', 'rb') as f:
